@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { execSync } from "node:child_process";
 import {
   handlePullRequest,
   handleIssueComment,
@@ -118,5 +119,26 @@ app.listen(PORT, () => {
   console.log(`  Model: ${MODEL} | Effort: ${EFFORT} | Confidence threshold: ${CONFIDENCE_THRESHOLD}`);
   console.log(`  Webhook:  POST http://localhost:${PORT}/webhook`);
   console.log(`  Health:   GET  http://localhost:${PORT}/`);
+
+  // Check Claude auth status on startup
+  if (!ANTHROPIC_API_KEY) {
+    try {
+      const status = execSync("claude auth status --text", { stdio: "pipe", timeout: 10_000 }).toString();
+      if (/logged in/i.test(status)) {
+        console.log("  Auth:     Claude Code (logged in)");
+      } else {
+        console.warn("");
+        console.warn("  WARNING: Claude Code is not authenticated.");
+        console.warn('  Run "claude auth login" to authenticate, or set ANTHROPIC_API_KEY in .env');
+      }
+    } catch {
+      console.warn("");
+      console.warn("  WARNING: Could not check Claude Code auth status.");
+      console.warn('  Run "claude auth login" to authenticate, or set ANTHROPIC_API_KEY in .env');
+    }
+  } else {
+    console.log("  Auth:     API key");
+  }
+
   console.log("");
 });

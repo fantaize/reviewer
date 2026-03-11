@@ -51,6 +51,18 @@ export async function runAgent(config: AgentConfig): Promise<Finding[]> {
       }
     }
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+
+    // Detect auth failures and surface them clearly
+    if (/auth|unauthorized|token|login|credential|401|403/i.test(msg)) {
+      console.error(
+        `[${config.name}] Authentication failed. Either:\n` +
+        `  1. Set ANTHROPIC_API_KEY in your .env file, or\n` +
+        `  2. Run "claude auth login" on this machine to authenticate Claude Code\n` +
+        `  Check status with: claude auth status --text`
+      );
+    }
+
     console.error(`[${config.name}] Agent execution failed:`, err);
     return [];
   }

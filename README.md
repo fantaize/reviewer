@@ -24,8 +24,8 @@ A self-hosted GitHub bot that performs multi-agent AI code reviews on pull reque
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/yourname/ai-code-reviewer.git
-cd ai-code-reviewer
+git clone https://github.com/fantaize/reviewer.git
+cd reviewer
 npm install
 ```
 
@@ -96,6 +96,39 @@ npx smee -u https://smee.io/YOUR_CHANNEL -t http://localhost:3000/webhook
 ```
 
 Set the smee.io URL as your GitHub App's webhook URL.
+
+## Authentication
+
+The bot needs access to Claude. Two options:
+
+### Option A: API Key (recommended for servers)
+
+Set `ANTHROPIC_API_KEY` in your `.env`. This uses the Anthropic API directly — no interactive login needed. Most reliable for unattended VPS/server deployments.
+
+### Option B: Claude Code Subscription
+
+Uses your existing Claude Code subscription. Requires a one-time interactive login:
+
+```bash
+# Install Claude Code CLI
+npm install -g @anthropic-ai/claude-code
+
+# Login (prints a URL — open it in your browser to authenticate)
+claude auth login
+
+# Verify it worked
+claude auth status --text
+```
+
+The token is stored in `~/.claude/` and persists across restarts. The bot checks auth status on startup and will warn you if re-authentication is needed. If a review fails due to an expired token, the error message will tell you to run `claude auth login` again.
+
+For Docker deployments using OAuth, mount the auth directory:
+
+```yaml
+# docker-compose.yml
+volumes:
+  - ~/.claude:/root/.claude:ro
+```
 
 ## Configuration
 
