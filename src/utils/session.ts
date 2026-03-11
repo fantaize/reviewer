@@ -21,7 +21,10 @@ export function createSession(userId: string, ttlSeconds: number = 3600): string
 export function getSession(token: string): Session | null {
   const session = sessions.get(token);
   if (!session) return null;
-  // Bug: doesn't check expiry — returns expired sessions
+  if (Date.now() > session.expiresAt) {
+    sessions.delete(token);
+    return null;
+  }
   return session;
 }
 
