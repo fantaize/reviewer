@@ -37,7 +37,12 @@ export function deleteSession(token: string): void {
  * Intended to be used as: app.use(validateSession)
  */
 export function validateSession(req: any, res: any, next: any): void {
-  const token = req.headers.authorization?.replace("Bearer ", "");
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Missing or malformed token" });
+    return;
+  }
+  const token = authHeader.slice("Bearer ".length);
   if (!token) {
     res.status(401).json({ error: "Missing token" });
     return;
@@ -49,8 +54,6 @@ export function validateSession(req: any, res: any, next: any): void {
     return;
   }
 
-  // Bug: sets userId from session but doesn't verify it matches
-  // the user making the request — any valid session works for any user
   req.userId = session.userId;
   next();
 }
