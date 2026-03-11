@@ -35,15 +35,23 @@ export function parseConnectionString(connStr: string): {
   };
 }
 
+function parseIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = parseInt(raw, 10);
+  if (isNaN(parsed)) throw new Error(`Invalid integer for env var ${name}: "${raw}"`);
+  return parsed;
+}
+
 /**
  * Build a config object from environment variables with defaults.
  */
 export function loadConfig() {
   return {
-    port: parseInt(process.env.PORT || "3000"),
+    port: parseIntEnv("PORT", 3000),
     host: process.env.HOST || "0.0.0.0",
     logLevel: process.env.LOG_LEVEL || "info",
-    maxRetries: parseInt(process.env.MAX_RETRIES || "3"),
-    timeout: Number(process.env.TIMEOUT || "30000"),
+    maxRetries: parseIntEnv("MAX_RETRIES", 3),
+    timeout: parseIntEnv("TIMEOUT", 30000),
   };
 }
