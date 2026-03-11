@@ -1,0 +1,213 @@
+import { createInstallationOctokit, postReaction, postSummaryComment } from "./github.js";
+import { runReview, type ReviewOptions } from "./review.js";
+
+interface AppConfig {
+  appId: string;
+  privateKeyPath: string;
+}
+
+interface WebhookContext {
+  appConfig: AppConfig;
+  reviewOptions: ReviewOptions;
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate review prevention
+// ---------------------------------------------------------------------------
+const activeReviews = new Map<string, { startedAt: number }>();
+const REVIEW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+function reviewKey(owner: string, repo: string, pullNumber: number, sha: string): string {
+  return `${owner}/${repo}#${pullNumber}@${sha}`;
+}
+
+function acquireReviewLock(key: string): boolean {
+  // Clean up stale locks
+  const now = Date.now();
+  for (const [k, v] of activeReviews) {
+    if (now - v.startedAt > REVIEW_TIMEOUT_MS) {
+      activeReviews.delete(k);
+    }
+  }
+  if (activeReviews.has(key)) {
+    return false;
+  }
+  activeReviews.set(key, { startedAt: now });
+  return true;
+}
+
+function releaseReviewLock(key: string): void {
+  activeReviews.delete(key);
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle pull_request events (opened, synchronize, reopened).
+ */
+export async function handlePullRequest(
+  payload: PullRequestPayload,
+  ctx: WebhookContext
+): Promise<void> {
+  const { action, pull_request, repository, installation } = payload;
+
+  if (!["opened", "synchronize", "reopened"].includes(action)) return;
+  if (!installation?.id) {
+    console.warn("[webhook] No installation ID in payload, skipping");
+    return;
+  }
+
+  // Skip draft PRs
+  if (pull_request.draft) {
+    console.log(`[webhook] Skipping draft PR #${pull_request.number}`);
+    return;
+  }
+
+  const owner = repository.owner.login;
+  const repo = repository.name;
+  const pullNumber = pull_request.number;
+  const headSha = pull_request.head.sha;
+
+  // Prevent duplicate reviews for the same commit
+  const key = reviewKey(owner, repo, pullNumber, headSha);
+  if (!acquireReviewLock(key)) {
+    console.log(`[webhook] Review already in progress for ${key}, skipping`);
+    return;
+  }
+
+  console.log(
+    `[webhook] PR ${action}: ${owner}/${repo}#${pullNumber} - "${pull_request.title}"`
+  );
+
+  const octokit = createInstallationOctokit(ctx.appConfig, installation.id);
+
+  // Post initial acknowledgment
+  await postSummaryComment(
+    octokit,
+    owner,
+    repo,
+    pullNumber,
+    "\u{1F440} AI Code Review in progress..."
+  );
+
+  try {
+    const result = await runReview(octokit, owner, repo, pullNumber, ctx.reviewOptions);
+    console.log(
+      `[webhook] Review complete: ${result.findingsCount} findings in ${result.duration}ms`
+    );
+  } catch (err) {
+    console.error(`[webhook] Review failed for ${owner}/${repo}#${pullNumber}:`, err);
+    await postSummaryComment(
+      octokit,
+      owner,
+      repo,
+      pullNumber,
+      `**Code Review**\n\nReview failed: ${err instanceof Error ? err.message : "Unknown error"}. Please try again by commenting \`/review\`.`
+    );
+  } finally {
+    releaseReviewLock(key);
+  }
+}
+
+/**
+ * Handle issue_comment events — look for /review trigger.
+ */
+export async function handleIssueComment(
+  payload: IssueCommentPayload,
+  ctx: WebhookContext
+): Promise<void> {
+  const { action, comment, issue, repository, installation } = payload;
+
+  if (action !== "created") return;
+  if (!installation?.id) return;
+
+  // Must be a PR comment (issues have no pull_request field)
+  if (!issue.pull_request) return;
+
+  // Check for /review trigger
+  const body = comment.body.trim();
+  if (!body.startsWith("/review")) return;
+
+  const owner = repository.owner.login;
+  const repo = repository.name;
+  const pullNumber = issue.number;
+
+  console.log(
+    `[webhook] Manual review triggered by @${comment.user.login} on ${owner}/${repo}#${pullNumber}`
+  );
+
+  const octokit = createInstallationOctokit(ctx.appConfig, installation.id);
+
+  // Acknowledge with eyes reaction
+  await postReaction(octokit, owner, repo, comment.id, "eyes");
+
+  // For manual reviews, use "manual" as SHA to allow re-review of same commit
+  const key = reviewKey(owner, repo, pullNumber, `manual-${comment.id}`);
+  if (!acquireReviewLock(key)) {
+    console.log(`[webhook] Review already in progress for ${key}, skipping`);
+    return;
+  }
+
+  // Extract optional custom instructions from comment
+  const customInstructions = body.replace(/^\/review\s*/, "").trim() || undefined;
+
+  const reviewOptions: ReviewOptions = {
+    ...ctx.reviewOptions,
+    reviewInstructions: customInstructions ?? ctx.reviewOptions.reviewInstructions,
+  };
+
+  try {
+    const result = await runReview(octokit, owner, repo, pullNumber, reviewOptions);
+    console.log(
+      `[webhook] Manual review complete: ${result.findingsCount} findings`
+    );
+  } catch (err) {
+    console.error(`[webhook] Manual review failed:`, err);
+    await postSummaryComment(
+      octokit,
+      owner,
+      repo,
+      pullNumber,
+      `**Code Review**\n\nReview failed: ${err instanceof Error ? err.message : "Unknown error"}`
+    );
+  } finally {
+    releaseReviewLock(key);
+  }
+}
+
+// Minimal type definitions for webhook payloads
+export interface PullRequestPayload {
+  action: string;
+  pull_request: {
+    number: number;
+    title: string;
+    draft: boolean;
+    head: { sha: string };
+    base: { sha: string };
+  };
+  repository: {
+    name: string;
+    owner: { login: string };
+  };
+  installation?: { id: number };
+}
+
+export interface IssueCommentPayload {
+  action: string;
+  comment: {
+    id: number;
+    body: string;
+    user: { login: string };
+  };
+  issue: {
+    number: number;
+    pull_request?: unknown;
+  };
+  repository: {
+    name: string;
+    owner: { login: string };
+  };
+  installation?: { id: number };
+}
