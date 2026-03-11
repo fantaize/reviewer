@@ -129,12 +129,12 @@ app.listen(PORT, () => {
       } else {
         console.warn("");
         console.warn("  WARNING: Claude Code is not authenticated.");
-        console.warn('  Run "claude auth login" to authenticate, or set ANTHROPIC_API_KEY in .env');
+        console.warn('  Run "claude setup-token" to authenticate, or set ANTHROPIC_API_KEY in .env');
       }
     } catch {
       console.warn("");
       console.warn("  WARNING: Could not check Claude Code auth status.");
-      console.warn('  Run "claude auth login" to authenticate, or set ANTHROPIC_API_KEY in .env');
+      console.warn('  Run "claude setup-token" to authenticate, or set ANTHROPIC_API_KEY in .env');
     }
   } else {
     console.log("  Auth:     API key");

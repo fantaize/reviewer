@@ -107,20 +107,20 @@ Set `ANTHROPIC_API_KEY` in your `.env`. This uses the Anthropic API directly —
 
 ### Option B: Claude Code Subscription
 
-Uses your existing Claude Code subscription. Requires a one-time interactive login:
+Uses your existing Claude Code subscription. Requires a one-time token setup:
 
 ```bash
 # Install Claude Code CLI
 npm install -g @anthropic-ai/claude-code
 
-# Login (prints a URL — open it in your browser to authenticate)
-claude auth login
+# Generate an auth token (works on headless servers/VPS)
+claude setup-token
 
 # Verify it worked
 claude auth status --text
 ```
 
-The token is stored in `~/.claude/` and persists across restarts. The bot checks auth status on startup and will warn you if re-authentication is needed. If a review fails due to an expired token, the error message will tell you to run `claude auth login` again.
+The token is stored in `~/.claude/` and persists across restarts. The bot checks auth status on startup and will warn you if re-authentication is needed. If a review fails due to an expired token, the error message will tell you to run `claude setup-token` again.
 
 For Docker deployments using OAuth, mount the auth directory:
 

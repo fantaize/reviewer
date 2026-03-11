@@ -58,7 +58,7 @@ export async function runAgent(config: AgentConfig): Promise<Finding[]> {
       console.error(
         `[${config.name}] Authentication failed. Either:\n` +
         `  1. Set ANTHROPIC_API_KEY in your .env file, or\n` +
-        `  2. Run "claude auth login" on this machine to authenticate Claude Code\n` +
+        `  2. Run "claude setup-token" on this machine to authenticate Claude Code\n` +
         `  Check status with: claude auth status --text`
       );
     }
