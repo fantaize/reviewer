@@ -1,5 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Finding, PRContext, VerifiedFinding } from "./types.js";
+import { getClaudePath } from "./utils.js";
 
 // Modeled on the verification specialist and false-positive filtering from /security-review
 const SYSTEM_PROMPT = `You are a verification specialist for code review findings. Your job is not to confirm findings — it's to try to disprove them.
@@ -118,6 +119,17 @@ async function verifyBatch(
 
   try {
     const { modelConfig } = context;
+
+    // Build env: spread process.env and unset CLAUDECODE to avoid
+    // "nested session" error. The SDK replaces env entirely, not merges.
+    const agentEnv: Record<string, string | undefined> = {
+      ...process.env,
+      CLAUDECODE: "",
+    };
+    if (modelConfig.apiKey) {
+      agentEnv.ANTHROPIC_API_KEY = modelConfig.apiKey;
+    }
+
     const result = query({
       prompt: buildVerifierPrompt(context, findings),
       options: {
@@ -126,9 +138,10 @@ async function verifyBatch(
         maxTurns: hasCodebase ? 15 : 5,
         permissionMode: "dontAsk",
         allowedTools: hasCodebase ? ["Read", "Grep", "Glob"] : [],
+        env: agentEnv,
+        pathToClaudeCodeExecutable: getClaudePath(),
         ...(hasCodebase ? { cwd: context.repoDir } : {}),
         ...(modelConfig.effort ? { effort: modelConfig.effort } : {}),
-        ...(modelConfig.apiKey ? { env: { ANTHROPIC_API_KEY: modelConfig.apiKey } } : {}),
       },
     });
 
@@ -159,10 +172,12 @@ async function verifyBatch(
 }
 
 function extractVerifications(text: string): VerificationEntry[] {
-  const jsonBlocks = [...text.matchAll(/```json\s*\n([\s\S]*?)```/g)];
-
-  const jsonStr =
-    jsonBlocks.length > 0 ? jsonBlocks[jsonBlocks.length - 1][1] : text.trim();
+  // Use bracket-depth extraction to handle embedded backticks in output
+  const jsonStr = extractLastJsonArray(text);
+  if (!jsonStr) {
+    console.warn("[verifier] No JSON array found in verification output");
+    return [];
+  }
 
   try {
     const parsed = JSON.parse(jsonStr);
@@ -185,6 +200,64 @@ function extractVerifications(text: string): VerificationEntry[] {
     console.warn("[verifier] Failed to parse verification JSON");
     return [];
   }
+}
+
+/**
+ * Extract the last JSON array from text, using bracket-depth counting
+ * to handle embedded triple-backtick code blocks in string values.
+ */
+function extractLastJsonArray(text: string): string | null {
+  const marker = "```json";
+  let lastCandidate: string | null = null;
+  let searchFrom = 0;
+
+  while (true) {
+    const markerIdx = text.indexOf(marker, searchFrom);
+    if (markerIdx === -1) break;
+
+    let start = markerIdx + marker.length;
+    while (start < text.length && (text[start] === " " || text[start] === "\n" || text[start] === "\r")) {
+      start++;
+    }
+
+    if (start < text.length && text[start] === "[") {
+      const arrayStr = extractJsonArrayAt(text, start);
+      if (arrayStr) lastCandidate = arrayStr;
+    }
+
+    searchFrom = start + 1;
+  }
+
+  // Fallback: try the entire text
+  if (!lastCandidate) {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("[")) return trimmed;
+  }
+
+  return lastCandidate;
+}
+
+function extractJsonArrayAt(text: string, start: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\" && inString) { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === "[" || ch === "{") depth++;
+    else if (ch === "]" || ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+
+  return null;
 }
 
 /**

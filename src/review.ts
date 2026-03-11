@@ -1,6 +1,6 @@
 import type { Octokit } from "@octokit/rest";
 import type { PRContext, ModelConfig } from "./agents/types.js";
-import { fetchPRDiff, fetchChangedFiles, postReview, postSummaryComment, getInstallationToken } from "./github.js";
+import { fetchPRDiff, fetchChangedFiles, postReview, postSummaryComment, getInstallationToken, createCheckRun, updateCheckRun } from "./github.js";
 import { loadReviewConfig } from "./config.js";
 import { orchestrate } from "./agents/orchestrator.js";
 import { buildReviewComments, formatSummaryComment } from "./formatter.js";
@@ -36,25 +36,30 @@ export async function runReview(
     pull_number: pullNumber,
   });
 
-  // 2. Fetch diff and changed files in parallel
-  const [diff, changedFiles, reviewConfig] = await Promise.all([
+  // Create check run
+  let checkRunId: number | undefined;
+  try {
+    checkRunId = await createCheckRun(octokit, owner, repo, pr.data.head.sha);
+    console.log(`[review] Created check run ${checkRunId}`);
+  } catch (err) {
+    console.warn("[review] Failed to create check run (may lack checks permission):", err);
+  }
+
+  // 2. Fetch diff and changed files in parallel (reviewConfig loaded after clone)
+  const [diff, changedFiles] = await Promise.all([
     fetchPRDiff(octokit, owner, repo, pullNumber),
     fetchChangedFiles(octokit, owner, repo, pullNumber),
-    loadReviewConfig(octokit, owner, repo, pr.data.head.sha, {
-      confidenceThreshold: options.confidenceThreshold,
-      reviewInstructions: options.reviewInstructions,
-    }),
   ]);
 
   // Guard: skip very large PRs
   if (diff.length > 200_000) {
-    await postSummaryComment(
-      octokit,
-      owner,
-      repo,
-      pullNumber,
-      "## \u{1F916} AI Code Review\n\nThis PR is too large for automated review (diff exceeds 200KB). Please consider breaking it into smaller PRs."
-    );
+    const msg = "## \u{1F916} AI Code Review\n\nThis PR is too large for automated review (diff exceeds 200KB). Please consider breaking it into smaller PRs.";
+    await postSummaryComment(octokit, owner, repo, pullNumber, msg);
+    if (checkRunId) {
+      try {
+        await updateCheckRun(octokit, owner, repo, checkRunId, "neutral", msg, 0);
+      } catch {}
+    }
     return { findingsCount: 0, duration: Date.now() - start };
   }
 
@@ -87,7 +92,17 @@ export async function runReview(
     repoDir = undefined;
   }
 
-  // 4. Build context
+  // 4. Load review config (after clone so CLAUDE.md files can be discovered)
+  const reviewConfig = await loadReviewConfig(
+    octokit, owner, repo, pr.data.head.sha,
+    {
+      confidenceThreshold: options.confidenceThreshold,
+      reviewInstructions: options.reviewInstructions,
+    },
+    repoDir
+  );
+
+  // 5. Build context
   const context: PRContext = {
     owner,
     repo,
@@ -104,7 +119,7 @@ export async function runReview(
     modelConfig: options.modelConfig,
   };
 
-  // 5. Run multi-agent orchestration
+  // 6. Run multi-agent orchestration
   let findings: Awaited<ReturnType<typeof orchestrate>>["findings"];
   let agentResults: Awaited<ReturnType<typeof orchestrate>>["agentResults"];
   try {
@@ -113,6 +128,17 @@ export async function runReview(
     });
     findings = result.findings;
     agentResults = result.agentResults;
+  } catch (err) {
+    // Mark check run as failed
+    if (checkRunId) {
+      try {
+        await updateCheckRun(
+          octokit, owner, repo, checkRunId, "failure",
+          `Review failed: ${err instanceof Error ? err.message : "Unknown error"}`, 0
+        );
+      } catch {}
+    }
+    throw err;
   } finally {
     // Clean up cloned repo
     if (repoDir) {
@@ -127,7 +153,7 @@ export async function runReview(
 
   const totalDuration = Date.now() - start;
 
-  // 5. Format findings
+  // 7. Format findings
   const { inlineComments, overflowFindings } = buildReviewComments(
     findings,
     diff
@@ -140,7 +166,7 @@ export async function runReview(
     totalDuration
   );
 
-  // 6. Post review
+  // 8. Post review
   if (inlineComments.length > 0) {
     try {
       await postReview(
@@ -163,6 +189,20 @@ export async function runReview(
   } else {
     // No inline comments — post summary only
     await postSummaryComment(octokit, owner, repo, pullNumber, summary);
+  }
+
+  // Update check run
+  if (checkRunId) {
+    try {
+      await updateCheckRun(
+        octokit, owner, repo, checkRunId,
+        findings.length > 0 ? "neutral" : "success",
+        summary,
+        findings.length
+      );
+    } catch (err) {
+      console.warn("[review] Failed to update check run:", err);
+    }
   }
 
   console.log(

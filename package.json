@@ -7,9 +7,12 @@
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "dev": "tsx watch src/index.ts",
+    "smee": "smee -u https://smee.io/zKRa4sekdvLn24d -t http://localhost:3000/webhook",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.0",
@@ -23,7 +26,9 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
+    "smee-client": "^5.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
   }
 }

@@ -42,6 +42,15 @@ export interface ReviewConfig {
   ignorePatterns: string[];
   customInstructions: string;
   confidenceThreshold: number;
+  /** Hierarchical CLAUDE.md instructions keyed by directory path */
+  claudeMdFiles: ClaudeMdEntry[];
+}
+
+export interface ClaudeMdEntry {
+  /** Directory path relative to repo root (empty string for root) */
+  path: string;
+  /** Raw markdown content */
+  content: string;
 }
 
 export interface ModelConfig {

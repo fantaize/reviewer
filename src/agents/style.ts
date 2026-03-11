@@ -1,28 +1,41 @@
 import type { AgentResult, PRContext } from "./types.js";
 import { runAgent } from "./runner.js";
 
-function buildSystemPrompt(rules: string[]): string {
+function buildSystemPrompt(context: PRContext): string {
+  const { rules, claudeMdFiles } = context.reviewConfig;
+
   const rulesSection =
     rules.length > 0
       ? rules.map((r, i) => `${i + 1}. ${r}`).join("\n")
-      : "No project-specific rules defined. Focus on universal best practices only.";
+      : "No REVIEW.md rules defined.";
+
+  const claudeMdSection =
+    claudeMdFiles.length > 0
+      ? claudeMdFiles
+          .map(
+            (entry) =>
+              `### CLAUDE.md${entry.path ? ` (${entry.path}/)` : " (root)"}\n${entry.content}`
+          )
+          .join("\n\n")
+      : "";
 
   return `You are a code review assistant focused on enforcing project conventions and catching maintainability issues.
 
 OBJECTIVE:
-Check the PR diff against the project-specific rules below. Flag violations with HIGH CONFIDENCE only. This is not a bug review or security review — focus on conventions and code quality.
+Check the PR diff against the project-specific rules and CLAUDE.md guidelines below. Flag violations with HIGH CONFIDENCE only. This is not a bug review or security review — focus on conventions and code quality.
 
 CRITICAL INSTRUCTIONS:
-1. Your PRIMARY obligation is to check violations of the project-specific rules.
+1. Your PRIMARY obligation is to check violations of the project-specific rules and CLAUDE.md guidelines.
 2. Only flag issues you are genuinely confident about.
-3. Use "nit" for most style issues. Use "warning" only for significant maintainability concerns.
+3. Use "nit" for most style issues, including all CLAUDE.md violations. Use "warning" only for significant maintainability concerns.
 4. NEVER use "critical" for style issues.
 5. Only review CHANGED lines. Do not flag pre-existing issues.
 6. Do NOT flag: missing tests, missing docs, TODO comments, personal style preferences not in the rules.
+7. BIDIRECTIONAL CHECK: If the PR changes code in a way that makes a CLAUDE.md statement outdated or incorrect, flag that the CLAUDE.md file needs updating too.
 
-PROJECT-SPECIFIC RULES:
+PROJECT-SPECIFIC RULES (from REVIEW.md):
 ${rulesSection}
-
+${claudeMdSection ? `\nPROJECT GUIDELINES (from CLAUDE.md):\nCLAUDE.md files contain project-wide instructions. Newly-introduced violations should be flagged as nit-level findings. CLAUDE.md files apply hierarchically — rules in a subdirectory's CLAUDE.md apply only to files under that path.\n\n${claudeMdSection}\n` : ""}
 CODEBASE EXPLORATION:
 You have access to the full repository via Read, Grep, and Glob tools. Use them to:
 - Read surrounding code to understand existing conventions (naming, patterns, structure)
@@ -77,7 +90,7 @@ export async function runStyleChecker(
   try {
     const findings = await runAgent({
       name: "style-checker",
-      systemPrompt: buildSystemPrompt(context.reviewConfig.rules),
+      systemPrompt: buildSystemPrompt(context),
       userPrompt: buildUserPrompt(context),
       cwd: context.repoDir,
       model: context.modelConfig.model,

@@ -1,6 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Finding } from "./types.js";
 import { randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
+import { getClaudePath } from "./utils.js";
 
 export interface AgentConfig {
   name: string;
@@ -22,6 +24,17 @@ export async function runAgent(config: AgentConfig): Promise<Finding[]> {
 
   try {
     const hasCodebase = !!config.cwd;
+
+    // Build env: spread process.env and unset CLAUDECODE to avoid
+    // "nested session" error. The SDK replaces env entirely, not merges.
+    const agentEnv: Record<string, string | undefined> = {
+      ...process.env,
+      CLAUDECODE: "",
+    };
+    if (config.apiKey) {
+      agentEnv.ANTHROPIC_API_KEY = config.apiKey;
+    }
+
     const result = query({
       prompt: config.userPrompt,
       options: {
@@ -30,9 +43,13 @@ export async function runAgent(config: AgentConfig): Promise<Finding[]> {
         maxTurns: config.maxTurns ?? (hasCodebase ? 20 : 10),
         permissionMode: "dontAsk",
         allowedTools: hasCodebase ? ["Read", "Grep", "Glob"] : [],
+        env: agentEnv,
+        pathToClaudeCodeExecutable: getClaudePath(),
+        stderr: (data: string) => {
+          console.error(`[${config.name}:stderr] ${data.trim()}`);
+        },
         ...(hasCodebase ? { cwd: config.cwd } : {}),
         ...(config.effort ? { effort: config.effort } : {}),
-        ...(config.apiKey ? { env: { ANTHROPIC_API_KEY: config.apiKey } } : {}),
       },
     });
 
@@ -67,44 +84,180 @@ export async function runAgent(config: AgentConfig): Promise<Finding[]> {
     return [];
   }
 
+  // Debug: dump raw output for inspection
+  try { writeFileSync(`/tmp/reviewer-${config.name}-output.txt`, fullText); } catch {}
+  console.log(`[${config.name}] Raw output: ${fullText.length} chars`);
+
   const findings = extractFindings(fullText, config.name);
   return findings;
 }
 
 /**
  * Extract JSON findings array from agent text output.
- * Looks for the last ```json ... ``` fenced block.
+ * Agent descriptions often contain embedded triple-backtick code blocks,
+ * so a naive ```json...``` regex won't work. Instead we:
+ * 1. Find each ```json marker
+ * 2. Locate the opening '[' of the array
+ * 3. Use bracket-depth counting (respecting JSON strings) to find the matching ']'
+ * 4. Try to parse the extracted array
  */
 function extractFindings(text: string, agentName: string): Finding[] {
-  const jsonBlocks = [...text.matchAll(/```json\s*\n([\s\S]*?)```/g)];
+  // Find all ```json markers and try to extract a valid JSON array from each
+  const marker = "```json";
+  const candidates: string[] = [];
+  let searchFrom = 0;
 
-  if (jsonBlocks.length === 0) {
-    // Try parsing the entire text as JSON as fallback
+  while (true) {
+    const markerIdx = text.indexOf(marker, searchFrom);
+    if (markerIdx === -1) break;
+
+    // Skip past the marker and any whitespace/newline
+    let start = markerIdx + marker.length;
+    while (start < text.length && (text[start] === " " || text[start] === "\n" || text[start] === "\r")) {
+      start++;
+    }
+
+    // Look for the opening '[' of a JSON array
+    if (start < text.length && text[start] === "[") {
+      const arrayStr = extractJsonArray(text, start);
+      if (arrayStr) {
+        candidates.push(arrayStr);
+      }
+    }
+
+    searchFrom = start + 1;
+  }
+
+  // Try candidates in reverse order (last one is most likely the final output)
+  for (let i = candidates.length - 1; i >= 0; i--) {
     try {
-      const parsed = JSON.parse(text.trim());
-      if (Array.isArray(parsed)) {
+      const parsed = JSON.parse(candidates[i]);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log(`[${agentName}] Extracted JSON array with ${parsed.length} item(s)`);
         return normalizeFindings(parsed, agentName);
       }
     } catch {
-      // Not JSON
+      // Try repair on this candidate
+      const repaired = repairTruncatedJsonArray(candidates[i]);
+      if (repaired.length > 0) {
+        console.log(`[${agentName}] Repaired truncated JSON, recovered ${repaired.length} finding(s)`);
+        return normalizeFindings(repaired, agentName);
+      }
     }
-    console.warn(`[${agentName}] No JSON findings found in response`);
-    return [];
   }
 
-  // Use the last JSON block (most likely the final output)
-  const lastBlock = jsonBlocks[jsonBlocks.length - 1];
+  // Fallback: try parsing the entire text as JSON
   try {
-    const parsed = JSON.parse(lastBlock[1]);
-    if (!Array.isArray(parsed)) {
-      console.warn(`[${agentName}] JSON block is not an array`);
-      return [];
+    const parsed = JSON.parse(text.trim());
+    if (Array.isArray(parsed)) {
+      return normalizeFindings(parsed, agentName);
     }
-    return normalizeFindings(parsed, agentName);
-  } catch (err) {
-    console.warn(`[${agentName}] Failed to parse JSON:`, err);
-    return [];
+  } catch {
+    // Not JSON
   }
+
+  console.warn(`[${agentName}] No JSON findings found in response`);
+  return [];
+}
+
+/**
+ * Extract a JSON array starting at position `start` in `text`.
+ * Uses bracket/brace depth counting while respecting JSON string literals.
+ * Returns the substring from '[' to the matching ']', or null if not found.
+ */
+function extractJsonArray(text: string, start: number): string | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\" && inString) {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === "[" || ch === "{") {
+      depth++;
+    } else if (ch === "]" || ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  // Array was truncated — return what we have for repair attempts
+  return text.slice(start);
+}
+
+/**
+ * Attempt to recover complete objects from a truncated JSON array.
+ * Finds each complete {...} object in the array text.
+ */
+function repairTruncatedJsonArray(text: string): Record<string, unknown>[] {
+  const results: Record<string, unknown>[] = [];
+
+  // Find all complete top-level objects by tracking brace depth
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let objectStart = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === "{") {
+      if (depth === 0) objectStart = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objectStart !== -1) {
+        const objStr = text.slice(objectStart, i + 1);
+        try {
+          const obj = JSON.parse(objStr);
+          if (typeof obj === "object" && obj !== null) {
+            results.push(obj as Record<string, unknown>);
+          }
+        } catch {
+          // This object is also malformed, skip
+        }
+        objectStart = -1;
+      }
+    }
+  }
+
+  return results;
 }
 
 /**

@@ -1,3 +1,7 @@
+// Must unset CLAUDECODE before any imports to prevent "nested session" errors
+// when spawning Claude Agent SDK subprocesses
+delete process.env.CLAUDECODE;
+
 import "dotenv/config";
 import express from "express";
 import crypto from "node:crypto";

@@ -148,6 +148,7 @@ export async function postReview(
 
 /**
  * Post a standalone comment on a pull request.
+ * Returns the comment ID so it can be updated or deleted later.
  */
 export async function postSummaryComment(
   octokit: Octokit,
@@ -155,12 +156,29 @@ export async function postSummaryComment(
   repo: string,
   pullNumber: number,
   body: string
-): Promise<void> {
-  await octokit.rest.issues.createComment({
+): Promise<number> {
+  const response = await octokit.rest.issues.createComment({
     owner,
     repo,
     issue_number: pullNumber,
     body,
+  });
+  return response.data.id;
+}
+
+/**
+ * Delete a comment by ID.
+ */
+export async function deleteComment(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  commentId: number
+): Promise<void> {
+  await octokit.rest.issues.deleteComment({
+    owner,
+    repo,
+    comment_id: commentId,
   });
 }
 
@@ -174,6 +192,98 @@ export async function getInstallationToken(
   // We can get the token from the auth object.
   const auth = (await octokit.auth({ type: "installation" })) as { token: string };
   return auth.token;
+}
+
+/**
+ * Create a GitHub Check Run for the review.
+ */
+export async function createCheckRun(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  headSha: string
+): Promise<number> {
+  const response = await octokit.rest.checks.create({
+    owner,
+    repo,
+    name: "Claude Code Review",
+    head_sha: headSha,
+    status: "in_progress",
+    started_at: new Date().toISOString(),
+  });
+  return response.data.id;
+}
+
+/**
+ * Update a check run with completion status.
+ */
+export async function updateCheckRun(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  checkRunId: number,
+  conclusion: "success" | "neutral" | "failure",
+  summary: string,
+  findingsCount: number
+): Promise<void> {
+  await octokit.rest.checks.update({
+    owner,
+    repo,
+    check_run_id: checkRunId,
+    status: "completed",
+    conclusion,
+    completed_at: new Date().toISOString(),
+    output: {
+      title: findingsCount > 0
+        ? `${findingsCount} issue${findingsCount !== 1 ? "s" : ""} found`
+        : "No issues found",
+      summary,
+    },
+  });
+}
+
+/**
+ * Resolve (hide/minimize) outdated review comments from previous reviews.
+ * Uses GraphQL to minimize comments as "OUTDATED".
+ */
+export async function resolveOutdatedComments(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  pullNumber: number
+): Promise<number> {
+  // Get all review comments on the PR
+  const comments = await octokit.paginate(
+    octokit.rest.pulls.listReviewComments,
+    { owner, repo, pull_number: pullNumber, per_page: 100 }
+  );
+
+  // Find comments from our bot that contain review findings
+  const botComments = comments.filter(
+    (c) =>
+      (c as Record<string, unknown>).performed_via_github_app != null ||
+      c.body.includes("Extended reasoning\u2026") // our signature
+  );
+
+  let resolved = 0;
+  for (const comment of botComments) {
+    try {
+      // Minimize the comment as outdated using GraphQL
+      await octokit.graphql(
+        `mutation($id: ID!) {
+          minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
+            minimizedComment { isMinimized }
+          }
+        }`,
+        { id: comment.node_id }
+      );
+      resolved++;
+    } catch {
+      // May not have permission, skip
+    }
+  }
+
+  return resolved;
 }
 
 /**

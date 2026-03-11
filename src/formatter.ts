@@ -3,10 +3,10 @@ import type { ReviewComment } from "./github.js";
 import { buildDiffMap, isLineInDiff, findClosestDiffLine } from "./diff.js";
 
 const SEVERITY_LABEL: Record<Severity, string> = {
-  critical: "Bug",
-  warning: "Warning",
-  nit: "Nit",
-  "pre-existing": "Pre-existing",
+  critical: "\uD83D\uDD34 Bug",
+  warning: "\uD83D\uDD34 Warning",
+  nit: "\uD83D\uDFE1 Nit",
+  "pre-existing": "\uD83D\uDFE3 Pre-existing",
 };
 
 /**
@@ -126,12 +126,12 @@ export function formatSummaryComment(
   lines.push("**Code Review Summary**");
   lines.push("");
 
-  // Concise severity breakdown
+  // Concise severity breakdown with official markers
   const parts: string[] = [];
-  if (counts.critical > 0) parts.push(`${counts.critical} critical`);
-  if (counts.warning > 0) parts.push(`${counts.warning} warning${counts.warning !== 1 ? "s" : ""}`);
-  if (counts.nit > 0) parts.push(`${counts.nit} nit${counts.nit !== 1 ? "s" : ""}`);
-  if (counts["pre-existing"] > 0) parts.push(`${counts["pre-existing"]} pre-existing`);
+  if (counts.critical > 0) parts.push(`\uD83D\uDD34 ${counts.critical} critical`);
+  if (counts.warning > 0) parts.push(`\uD83D\uDD34 ${counts.warning} warning${counts.warning !== 1 ? "s" : ""}`);
+  if (counts.nit > 0) parts.push(`\uD83D\uDFE1 ${counts.nit} nit${counts.nit !== 1 ? "s" : ""}`);
+  if (counts["pre-existing"] > 0) parts.push(`\uD83D\uDFE3 ${counts["pre-existing"]} pre-existing`);
 
   lines.push(
     `Found **${findings.length} issue${findings.length !== 1 ? "s" : ""}** (${parts.join(", ")}) in ${formatDuration(totalDuration)}.`

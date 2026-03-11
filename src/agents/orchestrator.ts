@@ -55,9 +55,14 @@ export async function orchestrate(
 
   // Determine which agents to run
   const hasRules = context.reviewConfig.rules.length > 0;
+  const hasClaudeMd = context.reviewConfig.claudeMdFiles.length > 0;
+
+  // Run style checker if there are rules OR CLAUDE.md files (CLAUDE.md violations are nit-level)
+  const runStyle = hasRules || hasClaudeMd;
 
   console.log(
-    `[orchestrator] Reviewing ${filteredContext.changedFiles.length} files with ${hasRules ? 3 : 2} agents`
+    `[orchestrator] Reviewing ${filteredContext.changedFiles.length} files with ${runStyle ? 3 : 2} agents` +
+    (hasClaudeMd ? ` (${context.reviewConfig.claudeMdFiles.length} CLAUDE.md file(s))` : "")
   );
 
   // Phase 1: Parallel analysis
@@ -66,7 +71,7 @@ export async function orchestrate(
     runSecurityAuditor(filteredContext),
   ];
 
-  if (hasRules) {
+  if (runStyle) {
     agentPromises.push(runStyleChecker(filteredContext));
   }
 

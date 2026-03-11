@@ -1,4 +1,4 @@
-import { createInstallationOctokit, postReaction, postSummaryComment } from "./github.js";
+import { createInstallationOctokit, postReaction, postSummaryComment, deleteComment, resolveOutdatedComments } from "./github.js";
 import { runReview, type ReviewOptions } from "./review.js";
 
 interface AppConfig {
@@ -15,29 +15,43 @@ interface WebhookContext {
 // Duplicate review prevention
 // ---------------------------------------------------------------------------
 const activeReviews = new Map<string, { startedAt: number }>();
+const completedReviews = new Map<string, { completedAt: number }>();
 const REVIEW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const COMPLETED_RETENTION_MS = 30 * 60 * 1000; // 30 minutes
 
 function reviewKey(owner: string, repo: string, pullNumber: number, sha: string): string {
   return `${owner}/${repo}#${pullNumber}@${sha}`;
 }
 
 function acquireReviewLock(key: string): boolean {
-  // Clean up stale locks
   const now = Date.now();
+
+  // Clean up stale locks
   for (const [k, v] of activeReviews) {
     if (now - v.startedAt > REVIEW_TIMEOUT_MS) {
       activeReviews.delete(k);
     }
   }
-  if (activeReviews.has(key)) {
+
+  // Clean up old completed entries
+  for (const [k, v] of completedReviews) {
+    if (now - v.completedAt > COMPLETED_RETENTION_MS) {
+      completedReviews.delete(k);
+    }
+  }
+
+  // Block if active or already completed for this SHA
+  if (activeReviews.has(key) || completedReviews.has(key)) {
     return false;
   }
+
   activeReviews.set(key, { startedAt: now });
   return true;
 }
 
 function releaseReviewLock(key: string): void {
   activeReviews.delete(key);
+  completedReviews.set(key, { completedAt: Date.now() });
 }
 
 // ---------------------------------------------------------------------------
@@ -53,7 +67,7 @@ export async function handlePullRequest(
 ): Promise<void> {
   const { action, pull_request, repository, installation } = payload;
 
-  if (!["opened", "synchronize", "reopened"].includes(action)) return;
+  if (!["opened", "synchronize", "reopened", "ready_for_review"].includes(action)) return;
   if (!installation?.id) {
     console.warn("[webhook] No installation ID in payload, skipping");
     return;
@@ -83,14 +97,28 @@ export async function handlePullRequest(
 
   const octokit = createInstallationOctokit(ctx.appConfig, installation.id);
 
-  // Post initial acknowledgment
-  await postSummaryComment(
-    octokit,
-    owner,
-    repo,
-    pullNumber,
-    "\u{1F440} AI Code Review in progress..."
-  );
+  // On push to PR branch, auto-resolve outdated review comments
+  if (action === "synchronize") {
+    try {
+      const resolved = await resolveOutdatedComments(octokit, owner, repo, pullNumber);
+      if (resolved > 0) {
+        console.log(`[webhook] Auto-resolved ${resolved} outdated review comment(s)`);
+      }
+    } catch (err) {
+      console.warn("[webhook] Failed to auto-resolve comments:", err);
+    }
+  }
+
+  // Post initial acknowledgment (will be deleted when review completes)
+  let progressCommentId: number | undefined;
+  try {
+    progressCommentId = await postSummaryComment(
+      octokit, owner, repo, pullNumber,
+      "\u{1F440} AI Code Review in progress..."
+    );
+  } catch {
+    // Non-critical, continue
+  }
 
   try {
     const result = await runReview(octokit, owner, repo, pullNumber, ctx.reviewOptions);
@@ -100,13 +128,14 @@ export async function handlePullRequest(
   } catch (err) {
     console.error(`[webhook] Review failed for ${owner}/${repo}#${pullNumber}:`, err);
     await postSummaryComment(
-      octokit,
-      owner,
-      repo,
-      pullNumber,
+      octokit, owner, repo, pullNumber,
       `**Code Review**\n\nReview failed: ${err instanceof Error ? err.message : "Unknown error"}. Please try again by commenting \`/review\`.`
     );
   } finally {
+    // Clean up progress comment
+    if (progressCommentId) {
+      try { await deleteComment(octokit, owner, repo, progressCommentId); } catch {}
+    }
     releaseReviewLock(key);
   }
 }

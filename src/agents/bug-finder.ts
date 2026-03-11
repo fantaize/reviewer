@@ -118,6 +118,13 @@ function buildUserPrompt(context: PRContext): string {
     prompt += `\n## Project Rules:\n${context.reviewConfig.rules.map((r) => `- ${r}`).join("\n")}\n`;
   }
 
+  if (context.reviewConfig.claudeMdFiles.length > 0) {
+    prompt += `\n## Project Guidelines (CLAUDE.md):\n`;
+    for (const entry of context.reviewConfig.claudeMdFiles) {
+      prompt += `### ${entry.path || "(root)"}\n${entry.content}\n\n`;
+    }
+  }
+
   return prompt;
 }
 
