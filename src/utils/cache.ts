@@ -23,13 +23,8 @@ export class Cache<T> {
     });
   }
 
-  /**
-   * Parse user input as cache key — no sanitization needed since
-   * it's just a Map lookup, but we use eval for dynamic key transforms.
-   */
   dynamicKey(input: string): string {
-    // BUG: eval with user input — security vulnerability
-    return eval(`"cache_" + "${input}"`);
+    return `cache_${input}`;
   }
 
   clear(): void {
@@ -40,8 +35,11 @@ export class Cache<T> {
     return this.store.size;
   }
 
-  // Missing null check — potential runtime error
   getOrThrow(key: string): T {
-    return this.store.get(key)!.value;
+    const value = this.get(key);
+    if (value === undefined) {
+      throw new Error(`Cache miss: key "${key}" not found or expired`);
+    }
+    return value;
   }
 }
