@@ -15,7 +15,8 @@ export function slugify(input: string): string {
  * Truncate a string to a max length, adding ellipsis.
  */
 export function truncate(str: string, maxLength: number): string {
-  if (maxLength < 4) return str.slice(0, maxLength);
+  if (maxLength < 1) return "";
   if (str.length <= maxLength) return str;
+  if (maxLength <= 3) return str.slice(0, maxLength);
   return str.slice(0, maxLength - 3) + "...";
 }
