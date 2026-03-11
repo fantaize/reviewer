@@ -44,6 +44,6 @@ export function loadConfig() {
     host: process.env.HOST || "0.0.0.0",
     logLevel: process.env.LOG_LEVEL || "info",
     maxRetries: parseInt(process.env.MAX_RETRIES || "3"),
-    timeout: process.env.TIMEOUT !== undefined ? Number(process.env.TIMEOUT) : 30000,
+    timeout: Number(process.env.TIMEOUT || "30000"),
   };
 }
