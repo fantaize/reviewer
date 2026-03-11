@@ -11,6 +11,7 @@ export function requireEnv(name: string): string {
 
 /**
  * Parse a connection string into its components.
+ * Uses the URL constructor to correctly handle special characters in credentials.
  */
 export function parseConnectionString(connStr: string): {
   host: string;
@@ -19,27 +20,33 @@ export function parseConnectionString(connStr: string): {
   user?: string;
   password?: string;
 } {
-  const match = connStr.match(
-    /^(\w+):\/\/(?:([^:]+):([^@]+)@)?([^:\/]+):(\d+)\/(.+)$/
-  );
-  if (!match) {
+  let url: URL;
+  try {
+    url = new URL(connStr);
+  } catch {
+    throw new Error(`Invalid connection string: ${connStr}`);
+  }
+
+  if (!url.hostname || !url.port || !url.pathname.slice(1)) {
     throw new Error(`Invalid connection string: ${connStr}`);
   }
 
   return {
-    host: match[4],
-    port: parseInt(match[5]),
-    database: match[6],
-    user: match[2],
-    password: match[3],
+    host: url.hostname,
+    port: parseInt(url.port, 10),
+    database: url.pathname.slice(1),
+    user: url.username || undefined,
+    password: url.password ? decodeURIComponent(url.password) : undefined,
   };
 }
 
 function parseIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
-  const parsed = parseInt(raw, 10);
-  if (isNaN(parsed)) throw new Error(`Invalid integer for env var ${name}: "${raw}"`);
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`Invalid integer for env var ${name}: "${raw}"`);
+  }
   return parsed;
 }
 
