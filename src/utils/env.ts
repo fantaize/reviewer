@@ -19,9 +19,8 @@ export function parseConnectionString(connStr: string): {
   user?: string;
   password?: string;
 } {
-  // Bug: regex doesn't handle special characters in passwords
   const match = connStr.match(
-    /^(\w+):\/\/(?:(\w+):(\w+)@)?([^:\/]+):(\d+)\/(.+)$/
+    /^(\w+):\/\/(?:([^:]+):([^@]+)@)?([^:\/]+):(\d+)\/(.+)$/
   );
   if (!match) {
     throw new Error(`Invalid connection string: ${connStr}`);
@@ -44,8 +43,7 @@ export function loadConfig() {
     port: parseInt(process.env.PORT || "3000"),
     host: process.env.HOST || "0.0.0.0",
     logLevel: process.env.LOG_LEVEL || "info",
-    // Bug: maxRetries could be NaN if env var is non-numeric
     maxRetries: parseInt(process.env.MAX_RETRIES || "3"),
-    timeout: Number(process.env.TIMEOUT) || 30000,
+    timeout: process.env.TIMEOUT !== undefined ? Number(process.env.TIMEOUT) : 30000,
   };
 }
