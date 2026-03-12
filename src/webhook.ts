@@ -109,24 +109,23 @@ export async function handlePullRequest(
 
   const octokit = createInstallationOctokit(ctx.appConfig, installation.id);
 
+  // On new push, resolve all old review threads before running the new review
+  if (action === "synchronize") {
+    try {
+      const resolved = await resolveOutdatedComments(octokit, owner, repo, pullNumber);
+      if (resolved > 0) {
+        console.log(`[webhook] Resolved ${resolved} outdated comment(s) from previous review`);
+      }
+    } catch (err) {
+      console.warn("[webhook] Failed to resolve outdated comments:", err);
+    }
+  }
+
   try {
     const result = await runReview(octokit, owner, repo, pullNumber, ctx.reviewOptions);
     console.log(
       `[webhook] Review complete: ${result.findingsCount} findings in ${result.duration}ms`
     );
-
-    // After a push (synchronize), if the re-review found no issues,
-    // resolve old comments and dismiss stale REQUEST_CHANGES reviews
-    if (action === "synchronize" && result.findingsCount === 0) {
-      try {
-        const resolved = await resolveOutdatedComments(octokit, owner, repo, pullNumber);
-        if (resolved > 0) {
-          console.log(`[webhook] Resolved ${resolved} outdated comment(s) after clean re-review`);
-        }
-      } catch (err) {
-        console.warn("[webhook] Failed to resolve outdated comments:", err);
-      }
-    }
   } catch (err) {
     console.error(`[webhook] Review failed for ${owner}/${repo}#${pullNumber}:`, err);
   } finally {
