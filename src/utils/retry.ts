@@ -8,7 +8,7 @@ export async function retry<T>(
 ): Promise<T> {
   let lastError: Error | undefined;
 
-  for (let attempt = 0; attempt <= maxAttempts; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (err) {
