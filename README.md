@@ -10,8 +10,10 @@ A self-hosted GitHub bot that performs multi-agent AI code reviews on pull reque
 - **Full codebase exploration** — Agents use Read/Grep/Glob to explore beyond the diff
 - **Adversarial verification** — A verifier agent tries to _disprove_ every finding before it's posted
 - **Configurable per-repo** — Drop a `REVIEW.md` in your repo root with custom rules
-- **Manual trigger** — Comment `/review` on any PR to trigger a review
-- **Structured output** — Inline comments with "What the bug is", "Concrete proof", and "Impact and fix" sections
+- **Manual trigger** — Comment `/review` on any PR to trigger a review (opt-in via env)
+- **GitHub Check Runs** — CI-friendly status checks on every review
+- **Thread resolution** — Automatically resolves outdated review threads on clean re-reviews
+- **Structured output** — Prose summary above the fold, structured analysis in collapsible details
 
 ## Quick Start
 
@@ -47,6 +49,7 @@ Go to **[github.com/settings/apps/new](https://github.com/settings/apps/new)** a
 | Contents | Read |
 | Pull requests | Read & Write |
 | Issues | Read & Write |
+| Checks | Read & Write |
 
 **Subscribe to events:**
 - Pull request
@@ -141,8 +144,10 @@ volumes:
 | `GITHUB_WEBHOOK_SECRET` | Recommended | — | Webhook signature secret |
 | `PORT` | No | `3000` | Server port |
 | `CONFIDENCE_THRESHOLD` | No | `80` | Minimum confidence (0-100) to post a finding |
-| `MODEL` | No | `claude-opus-4-6` | Claude model ID |
-| `EFFORT` | No | `max` | Reasoning effort: `low`, `medium`, `high`, `max` |
+| `MODEL` | No | `claude-sonnet-4-6` | Claude model for analysis agents |
+| `VERIFIER_MODEL` | No | Same as `MODEL` | Claude model for the verification agent |
+| `EFFORT` | No | `high` | Reasoning effort: `low`, `medium`, `high`, `max` |
+| `ALLOW_MANUAL_REVIEW` | No | `false` | Enable `/review` comment command |
 | `ANTHROPIC_API_KEY` | No | — | API key (overrides Claude Code subscription) |
 
 ### Per-Repo Configuration (REVIEW.md)
@@ -178,6 +183,9 @@ PR Opened/Updated
    └────┬────┘
         │
         ▼
+   👀 React with eyes + Create check run
+        │
+        ▼
    ┌─────────┐
    │  Clone   │──── Shallow clone at PR head SHA
    └────┬────┘
@@ -209,7 +217,16 @@ PR Opened/Updated
                     │
                     ▼
    ┌─────────────────────────────────────┐
-   │  Post: Summary + Inline Comments    │
+   │  Post review body + inline comments │
+   │  Update check run ✓                 │
+   └────────────────┬────────────────────┘
+                    │
+          (on re-push with 0 findings)
+                    │
+                    ▼
+   ┌─────────────────────────────────────┐
+   │  Resolve outdated review threads    │
+   │  Approve PR ✓                       │
    └─────────────────────────────────────┘
 ```
 
@@ -217,7 +234,7 @@ PR Opened/Updated
 
 **Automatic:** The bot reviews every PR automatically when opened, updated, or reopened.
 
-**Manual:** Comment `/review` on any PR to trigger a review. You can add custom instructions:
+**Manual:** Set `ALLOW_MANUAL_REVIEW=true` in `.env`, then comment `/review` on any PR to trigger a review. You can add custom instructions:
 
 ```
 /review Focus on the database migration changes and check for data loss
@@ -225,15 +242,15 @@ PR Opened/Updated
 
 ## Cost Expectations
 
-This bot uses Claude with multi-turn tool use across multiple agents. Each agent explores the codebase with Read/Grep/Glob tools for ~20 turns. Expect roughly:
+This bot uses Claude with multi-turn tool use across multiple agents. The default config uses Sonnet for analysis and Opus for verification. Each agent explores the codebase with Read/Grep/Glob tools for ~20 turns. Expect roughly:
 
-| PR Size | Agents | Estimated Cost |
+| PR Size | Agents | Estimated Cost (default config) |
 |---|---|---|
-| Small (<50 lines) | 2 | $2-5 |
-| Medium (50-500 lines) | 3 | $5-15 |
-| Large (500+ lines) | 3 | $15-30 |
+| Small (<50 lines) | 2 | $1-3 |
+| Medium (50-500 lines) | 3 | $3-8 |
+| Large (500+ lines) | 3 | $8-20 |
 
-Costs depend on the model (`MODEL`), reasoning effort (`EFFORT`), and codebase size. Use `MODEL=claude-sonnet-4-6` and `EFFORT=medium` for cheaper reviews.
+Costs depend on model choice and reasoning effort. To reduce costs, use `EFFORT=medium` or set `VERIFIER_MODEL` to the same as `MODEL`. For maximum quality, use `MODEL=claude-opus-4-6` with `EFFORT=max`.
 
 ## Project Structure
 
