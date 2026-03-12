@@ -142,7 +142,7 @@ export function buildReviewBody(
   }
 
   if (findings.length > 0) {
-    lines.push("");
+    if (summary) lines.push("");
     lines.push("### Findings");
     lines.push("");
     for (let i = 0; i < findings.length; i++) {

@@ -1,4 +1,4 @@
-import { createInstallationOctokit, postReaction, postPRReaction, resolveOutdatedComments, getAppSlug } from "./github.js";
+import { createInstallationOctokit, postReaction, resolveOutdatedComments, getAppSlug } from "./github.js";
 import { runReview, type ReviewOptions } from "./review.js";
 
 interface AppConfig {
@@ -108,13 +108,6 @@ export async function handlePullRequest(
   );
 
   const octokit = createInstallationOctokit(ctx.appConfig, installation.id);
-
-  // React with eyes to acknowledge the PR
-  try {
-    await postPRReaction(octokit, owner, repo, pullNumber, "eyes");
-  } catch (err) {
-    console.warn("[webhook] Failed to post eyes reaction:", err);
-  }
 
   try {
     const result = await runReview(octokit, owner, repo, pullNumber, ctx.reviewOptions);

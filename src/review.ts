@@ -1,6 +1,6 @@
 import type { Octokit } from "@octokit/rest";
 import type { PRContext, ModelConfig } from "./agents/types.js";
-import { fetchPRDiff, fetchChangedFiles, postReview, postSummaryComment, getInstallationToken, createCheckRun, updateCheckRun } from "./github.js";
+import { fetchPRDiff, fetchChangedFiles, postReview, postSummaryComment, getInstallationToken } from "./github.js";
 import { loadReviewConfig } from "./config.js";
 import { orchestrate } from "./agents/orchestrator.js";
 import { buildReviewComments, buildReviewBody } from "./formatter.js";
@@ -36,16 +36,7 @@ export async function runReview(
     pull_number: pullNumber,
   });
 
-  // Create check run
-  let checkRunId: number | undefined;
-  try {
-    checkRunId = await createCheckRun(octokit, owner, repo, pr.data.head.sha);
-    console.log(`[review] Created check run ${checkRunId}`);
-  } catch (err) {
-    console.warn("[review] Failed to create check run (may lack checks permission):", err);
-  }
-
-  // 2. Fetch diff and changed files in parallel (reviewConfig loaded after clone)
+  // 2. Fetch diff and changed files in parallel
   const [diff, changedFiles] = await Promise.all([
     fetchPRDiff(octokit, owner, repo, pullNumber),
     fetchChangedFiles(octokit, owner, repo, pullNumber),
@@ -55,11 +46,6 @@ export async function runReview(
   if (diff.length > 200_000) {
     const msg = "This PR is too large for automated review (diff exceeds 200KB). Please consider breaking it into smaller PRs.";
     await postSummaryComment(octokit, owner, repo, pullNumber, msg);
-    if (checkRunId) {
-      try {
-        await updateCheckRun(octokit, owner, repo, checkRunId, "neutral", msg, 0);
-      } catch {}
-    }
     return { findingsCount: 0, duration: Date.now() - start };
   }
 
@@ -74,7 +60,6 @@ export async function runReview(
       `git clone --depth 1 "${cloneUrl}" "${repoDir}"`,
       { stdio: "pipe", timeout: 120_000 }
     );
-    // Fetch the PR head commit specifically (shallow clone may not include it)
     execSync(`git fetch origin ${pr.data.head.sha} --depth 1`, {
       cwd: repoDir,
       stdio: "pipe",
@@ -129,15 +114,6 @@ export async function runReview(
     findings = result.findings;
     summary = result.summary;
   } catch (err) {
-    // Mark check run as failed
-    if (checkRunId) {
-      try {
-        await updateCheckRun(
-          octokit, owner, repo, checkRunId, "failure",
-          `Review failed: ${err instanceof Error ? err.message : "Unknown error"}`, 0
-        );
-      } catch {}
-    }
     throw err;
   } finally {
     // Clean up cloned repo
@@ -196,23 +172,6 @@ export async function runReview(
       console.log("[review] Approved PR (no issues found)");
     } catch (err) {
       console.error("[review] Failed to approve:", err);
-    }
-  }
-
-  // Update check run
-  if (checkRunId) {
-    try {
-      const checkSummary = findings.length > 0
-        ? `Found ${findings.length} issue${findings.length !== 1 ? "s" : ""} in ${formatDuration(totalDuration)}.`
-        : `No issues found in ${formatDuration(totalDuration)}.`;
-      await updateCheckRun(
-        octokit, owner, repo, checkRunId,
-        findings.length > 0 ? "neutral" : "success",
-        checkSummary,
-        findings.length
-      );
-    } catch (err) {
-      console.warn("[review] Failed to update check run:", err);
     }
   }
 

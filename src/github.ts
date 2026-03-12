@@ -139,7 +139,6 @@ export interface ReviewComment {
 /**
  * Post a review with inline comments on a pull request.
  * Uses REQUEST_CHANGES when findings exist, APPROVE when clean.
- * After posting, reacts to each inline comment with 👀 and 👎.
  */
 export async function postReview(
   octokit: Octokit,
@@ -151,7 +150,7 @@ export async function postReview(
   summary: string,
   event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT" = "REQUEST_CHANGES"
 ): Promise<void> {
-  const review = await octokit.rest.pulls.createReview({
+  await octokit.rest.pulls.createReview({
     owner,
     repo,
     pull_number: pullNumber,
@@ -167,32 +166,6 @@ export async function postReview(
       body: c.body,
     })),
   });
-
-  // React to each inline comment with 👀 and 👎
-  if (comments.length > 0) {
-    try {
-      const reviewComments = await octokit.rest.pulls.listCommentsForReview({
-        owner,
-        repo,
-        pull_number: pullNumber,
-        review_id: review.data.id,
-      });
-      for (const comment of reviewComments.data) {
-        try {
-          await octokit.rest.reactions.createForPullRequestReviewComment({
-            owner, repo, comment_id: comment.id, content: "eyes",
-          });
-          await octokit.rest.reactions.createForPullRequestReviewComment({
-            owner, repo, comment_id: comment.id, content: "-1",
-          });
-        } catch {
-          // Non-critical
-        }
-      }
-    } catch {
-      // Non-critical
-    }
-  }
 }
 
 /**
@@ -241,54 +214,6 @@ export async function getInstallationToken(
   // We can get the token from the auth object.
   const auth = (await octokit.auth({ type: "installation" })) as { token: string };
   return auth.token;
-}
-
-/**
- * Create a GitHub Check Run for the review.
- */
-export async function createCheckRun(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  headSha: string
-): Promise<number> {
-  const response = await octokit.rest.checks.create({
-    owner,
-    repo,
-    name: "Claude Code Review",
-    head_sha: headSha,
-    status: "in_progress",
-    started_at: new Date().toISOString(),
-  });
-  return response.data.id;
-}
-
-/**
- * Update a check run with completion status.
- */
-export async function updateCheckRun(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  checkRunId: number,
-  conclusion: "success" | "neutral" | "failure",
-  summary: string,
-  findingsCount: number
-): Promise<void> {
-  await octokit.rest.checks.update({
-    owner,
-    repo,
-    check_run_id: checkRunId,
-    status: "completed",
-    conclusion,
-    completed_at: new Date().toISOString(),
-    output: {
-      title: findingsCount > 0
-        ? `${findingsCount} issue${findingsCount !== 1 ? "s" : ""} found`
-        : "No issues found",
-      summary,
-    },
-  });
 }
 
 /**
@@ -426,21 +351,5 @@ export async function postReaction(
   });
 }
 
-/**
- * Post a reaction on a PR/issue to acknowledge processing.
- */
-export async function postPRReaction(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  issueNumber: number,
-  reaction: "+1" | "-1" | "eyes" | "rocket" | "heart" = "eyes"
-): Promise<void> {
-  await octokit.rest.reactions.createForIssue({
-    owner,
-    repo,
-    issue_number: issueNumber,
-    content: reaction,
-  });
-}
+
 

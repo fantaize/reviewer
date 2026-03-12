@@ -5,7 +5,6 @@ import type { PullRequestPayload, IssueCommentPayload } from "../src/webhook.js"
 vi.mock("../src/github.js", () => ({
   createInstallationOctokit: vi.fn(() => ({})),
   postReaction: vi.fn(),
-  postPRReaction: vi.fn(),
   resolveOutdatedComments: vi.fn(() => 0),
   getAppSlug: vi.fn(() => Promise.resolve("my-code-reviewer")),
 }));

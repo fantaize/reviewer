@@ -21,8 +21,7 @@ You get the same review depth — parallel agents, codebase exploration, adversa
 
 When you open a PR, the bot:
 
-1. Reacts with 👀 so you know it's working
-2. Clones your repo and reads the actual code (not just the diff)
+1. Clones your repo and reads the actual code (not just the diff)
 3. Runs 3 AI agents in parallel — bug finder, security auditor, style checker
 4. A verification agent double-checks every finding to filter out false positives
 5. Posts a review with inline comments on the exact lines that need fixing
@@ -68,7 +67,6 @@ This is the part that connects the bot to your repos. Follow these steps exactly
    | **Contents** | Read-only |
    | **Pull requests** | Read & write |
    | **Issues** | Read & write |
-   | **Checks** | Read & write |
 
 4. Scroll down to **Subscribe to events**. Check these two boxes:
    - [x] Pull request
@@ -312,9 +310,6 @@ PR Opened/Updated
    └────┬────┘
         │
         ▼
-   👀 React with eyes + Create check run
-        │
-        ▼
    ┌─────────┐
    │  Clone   │──── Shallow clone at PR head SHA
    └────┬────┘
@@ -347,7 +342,6 @@ PR Opened/Updated
                     ▼
    ┌─────────────────────────────────────┐
    │  Post review body + inline comments │
-   │  Update check run                   │
    └────────────────┬────────────────────┘
                     │
           (on re-push with 0 findings)
@@ -367,7 +361,7 @@ PR Opened/Updated
 - Check server logs for incoming webhook events
 
 **"Resource not accessible by integration" error:**
-- You're missing a permission. Go to your GitHub App settings and make sure Contents, Pull requests, Issues, and Checks are all set correctly. After changing permissions, you need to accept the new permissions on the installation page.
+- You're missing a permission. Go to your GitHub App settings and make sure Contents, Pull requests, and Issues are all set correctly. After changing permissions, you need to accept the new permissions on the installation page.
 
 **Reviews fail with auth errors:**
 - If using API key: check that `ANTHROPIC_API_KEY` is set correctly in `.env`
