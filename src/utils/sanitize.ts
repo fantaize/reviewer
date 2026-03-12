@@ -63,13 +63,21 @@ export async function hashPassword(password: string): Promise<string> {
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 60_000; // 1 minute
 
+// Prune expired entries periodically to prevent unbounded memory growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of requestCounts) {
+    if (now >= v.resetAt) requestCounts.delete(k);
+  }
+}, WINDOW_MS);
+
 export function checkRateLimit(ip: string, limit: number): boolean {
   const now = Date.now();
   const entry = requestCounts.get(ip);
 
   if (!entry || now >= entry.resetAt) {
     requestCounts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-    return true;
+    return 1 <= limit;
   }
 
   entry.count++;
