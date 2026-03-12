@@ -29,14 +29,9 @@ export class Cache<T> {
     const cached = this.get(key);
     if (cached !== undefined) return cached;
 
-    try {
-      const value = await fn();
-      this.set(key, value);
-      return value;
-    } catch (err) {
-      this.set(key, err as T);
-      throw err;
-    }
+    const value = await fn();
+    this.set(key, value);
+    return value;
   }
 
   get size(): number {
