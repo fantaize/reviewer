@@ -12,20 +12,33 @@ export function escapeHtml(str: string): string {
 
 /**
  * Strip all HTML tags from a string.
- * Uses iterative entity-encoding of `<` to guarantee no valid tag survives,
- * regardless of nesting, unclosed tags, or attribute tricks.
+ * Uses a proper state machine to handle `>` inside quoted attributes.
  */
 export function stripTags(html: string): string {
-  // Iteratively remove tags until stable — prevents nested/reconstructed tags
-  let prev = "";
-  let result = html;
-  while (result !== prev) {
-    prev = result;
-    result = result.replace(/<\/?[a-zA-Z][^>]*>/g, "");
+  let out = "";
+  let inTag = false;
+  let quote: string | null = null;
+
+  for (let i = 0; i < html.length; i++) {
+    const ch = html[i];
+
+    if (inTag) {
+      if (quote) {
+        if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === ">") {
+        inTag = false;
+      }
+    } else if (ch === "<") {
+      inTag = true;
+      quote = null;
+    } else {
+      out += ch;
+    }
   }
-  // Encode any remaining lone `<` so it can never form a tag
-  result = result.replace(/</g, "&lt;");
-  return result;
+
+  return out;
 }
 
 /**
