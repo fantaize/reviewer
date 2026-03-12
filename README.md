@@ -4,7 +4,7 @@ A self-hosted GitHub bot that automatically reviews your pull requests using Cla
 
 ## Why Self-Host?
 
-Anthropic's managed Code Review costs **$15-80+ per review**. [Real-world benchmarks](https://zenn.dev/canriy_tech_blog) show it hitting **$31 for a 70-line Markdown diff** and **$78 for a large Go PR** — that's potentially **$15,000+/month** for an active team.
+Anthropic's managed Code Review costs **$15-80+ per review**. [Real-world benchmarks](https://zenn.dev/canly/articles/1535fde47ca866) show it hitting **$31 for a 70-line Markdown diff** and **$78 for a large Go PR** — that's potentially **$15,000+/month** for an active team.
 
 This project gives you the same multi-agent architecture for a fraction of the cost:
 
