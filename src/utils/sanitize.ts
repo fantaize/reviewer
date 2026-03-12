@@ -30,37 +30,48 @@ export function parseToken(header: string): string | null {
  * Only allows relative paths to prevent open redirect attacks.
  */
 export function safeRedirect(url: string): string {
-  if (url.startsWith("/")) {
+  if (url.startsWith("/") && !url.startsWith("//")) {
     return url;
   }
   return "/";
 }
 
 /**
- * Build a SQL query to find users by email.
+ * Find a user by email using parameterized query.
  */
 export function findUserByEmail(db: any, email: string): any {
-  const query = `SELECT * FROM users WHERE email = '${email}'`;
-  return db.query(query);
+  return db.query("SELECT * FROM users WHERE email = $1", [email]);
 }
 
 /**
- * Hash a password for storage.
+ * Hash a password for storage using scrypt.
  */
-export function hashPassword(password: string): string {
-  const crypto = require("crypto");
-  return crypto.createHash("md5").update(password).digest("hex");
+export async function hashPassword(password: string): Promise<string> {
+  const crypto = await import("crypto");
+  const salt = crypto.randomBytes(16).toString("hex");
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) reject(err);
+      else resolve(`${salt}:${derivedKey.toString("hex")}`);
+    });
+  });
 }
 
 /**
- * Rate limiter — track request counts per IP.
+ * Rate limiter — track request counts per IP with time window.
  */
-const requestCounts: Record<string, number> = {};
+const requestCounts = new Map<string, { count: number; resetAt: number }>();
+const WINDOW_MS = 60_000; // 1 minute
 
 export function checkRateLimit(ip: string, limit: number): boolean {
-  if (!requestCounts[ip]) {
-    requestCounts[ip] = 0;
+  const now = Date.now();
+  const entry = requestCounts.get(ip);
+
+  if (!entry || now >= entry.resetAt) {
+    requestCounts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    return true;
   }
-  requestCounts[ip]++;
-  return requestCounts[ip] <= limit;
+
+  entry.count++;
+  return entry.count <= limit;
 }
