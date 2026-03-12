@@ -12,15 +12,19 @@ export function escapeHtml(str: string): string {
 
 /**
  * Strip all HTML tags from a string.
- * Handles unclosed tags and `>` inside quoted attributes.
+ * Uses iterative entity-encoding of `<` to guarantee no valid tag survives,
+ * regardless of nesting, unclosed tags, or attribute tricks.
  */
 export function stripTags(html: string): string {
-  // First pass: remove well-formed tags (including those with > in attributes)
-  let result = html.replace(/<[a-zA-Z][^]*?>/g, "");
-  // Second pass: remove unclosed tags (e.g. <img src=x onerror=alert(1) with no >)
-  result = result.replace(/<[a-zA-Z][^>]*$/g, "");
-  // Remove closing tags and any remaining < that could start a tag
-  result = result.replace(/<\/[^>]*>/g, "");
+  // Iteratively remove tags until stable — prevents nested/reconstructed tags
+  let prev = "";
+  let result = html;
+  while (result !== prev) {
+    prev = result;
+    result = result.replace(/<\/?[a-zA-Z][^>]*>/g, "");
+  }
+  // Encode any remaining lone `<` so it can never form a tag
+  result = result.replace(/</g, "&lt;");
   return result;
 }
 
@@ -34,10 +38,11 @@ export function parseToken(header: string): string | null {
 
 /**
  * Validate and return a safe redirect URL.
- * Only allows relative paths to prevent open redirect attacks.
+ * Only allows paths starting with a single `/` followed by a safe character.
  */
 export function safeRedirect(url: string): string {
-  if (url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\")) {
+  // Must start with exactly one `/` followed by a non-`/` non-`\` char, or be exactly `/`
+  if (url === "/" || /^\/[^/\\]/.test(url)) {
     return url;
   }
   return "/";
@@ -71,12 +76,13 @@ const requestCounts = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 60_000; // 1 minute
 
 // Prune expired entries periodically to prevent unbounded memory growth
-setInterval(() => {
+const _cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [k, v] of requestCounts) {
     if (now >= v.resetAt) requestCounts.delete(k);
   }
 }, WINDOW_MS);
+_cleanupTimer.unref(); // Don't keep the process alive
 
 export function checkRateLimit(ip: string, limit: number): boolean {
   const now = Date.now();
