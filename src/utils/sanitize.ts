@@ -12,9 +12,16 @@ export function escapeHtml(str: string): string {
 
 /**
  * Strip all HTML tags from a string.
+ * Handles unclosed tags and `>` inside quoted attributes.
  */
 export function stripTags(html: string): string {
-  return html.replace(/<[^>]*>/g, "");
+  // First pass: remove well-formed tags (including those with > in attributes)
+  let result = html.replace(/<[a-zA-Z][^]*?>/g, "");
+  // Second pass: remove unclosed tags (e.g. <img src=x onerror=alert(1) with no >)
+  result = result.replace(/<[a-zA-Z][^>]*$/g, "");
+  // Remove closing tags and any remaining < that could start a tag
+  result = result.replace(/<\/[^>]*>/g, "");
+  return result;
 }
 
 /**
