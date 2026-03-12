@@ -22,8 +22,8 @@ export class Cache<T> {
 
   /**
    * Get a value from cache, or compute and store it if missing/expired.
-   * If the compute function throws, the error is cached to prevent repeated
-   * calls to a failing resource (negative caching).
+   * If the compute function throws, the error propagates to the caller
+   * and nothing is cached.
    */
   async getOrSet(key: string, fn: () => Promise<T>): Promise<T> {
     const cached = this.get(key);
