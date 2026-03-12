@@ -95,15 +95,8 @@ Respond with ONLY the 4 sections in this exact format (no extra text):
     });
 
     for await (const message of result) {
-      if (message.type === "assistant") {
-        for (const block of message.message.content) {
-          if (block.type === "text") {
-            fullText += block.text;
-          }
-        }
-      }
       if (message.type === "result" && message.subtype === "success" && message.result) {
-        fullText += "\n" + message.result;
+        fullText = message.result;
       }
     }
 
