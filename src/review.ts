@@ -138,41 +138,23 @@ export async function runReview(
   // 8. Build review body and post
   const reviewBody = buildReviewBody(findings, overflowFindings, totalDuration, summary);
 
-  if (findings.length > 0) {
-    try {
-      await postReview(
-        octokit,
-        owner,
-        repo,
-        pullNumber,
-        pr.data.head.sha,
-        inlineComments,
-        reviewBody,
-        "REQUEST_CHANGES"
-      );
-      console.log(
-        `[review] Posted review with ${inlineComments.length} inline comments (requested changes)`
-      );
-    } catch (err) {
-      console.error("[review] Failed to post review:", err);
-    }
-  } else {
-    // No issues — approve the PR
-    try {
-      await postReview(
-        octokit,
-        owner,
-        repo,
-        pullNumber,
-        pr.data.head.sha,
-        [],
-        reviewBody,
-        "APPROVE"
-      );
-      console.log("[review] Approved PR (no issues found)");
-    } catch (err) {
-      console.error("[review] Failed to approve:", err);
-    }
+  // Post as COMMENT — never block or approve the PR, matching official behavior
+  try {
+    await postReview(
+      octokit,
+      owner,
+      repo,
+      pullNumber,
+      pr.data.head.sha,
+      inlineComments,
+      reviewBody,
+      "COMMENT"
+    );
+    console.log(
+      `[review] Posted review with ${inlineComments.length} inline comment(s)`
+    );
+  } catch (err) {
+    console.error("[review] Failed to post review:", err);
   }
 
   console.log(

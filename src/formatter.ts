@@ -12,7 +12,7 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 const SEVERITY_EMOJI: Record<Severity, string> = {
   normal: "\uD83D\uDD34",   // 🔴
   nit: "\uD83D\uDFE1",       // 🟡
-  "pre-existing": "\uD83D\uDFE0", // 🟠
+  "pre-existing": "\uD83D\uDFE3", // 🟣
 };
 
 /**
