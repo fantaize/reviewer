@@ -183,6 +183,16 @@ export async function handleIssueComment(
     return;
   }
 
+  // Resolve old review threads before running the new review
+  try {
+    const resolved = await resolveOutdatedComments(octokit, owner, repo, pullNumber);
+    if (resolved > 0) {
+      console.log(`[webhook] Resolved ${resolved} outdated comment(s) from previous review`);
+    }
+  } catch (err) {
+    console.warn("[webhook] Failed to resolve outdated comments:", err);
+  }
+
   // Extract optional custom instructions after "review"
   const customInstructions = body.replace(new RegExp(`@${botSlug}\\s+review\\s*`, "i"), "").trim() || undefined;
 
