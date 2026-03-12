@@ -1,4 +1,4 @@
-import { createInstallationOctokit, postReaction, postPRReaction, resolveOutdatedComments } from "./github.js";
+import { createInstallationOctokit, postReaction, postPRReaction, resolveOutdatedComments, getAppSlug } from "./github.js";
 import { runReview, type ReviewOptions } from "./review.js";
 
 interface AppConfig {
@@ -142,7 +142,7 @@ export async function handlePullRequest(
 }
 
 /**
- * Handle issue_comment events — look for /review trigger.
+ * Handle issue_comment events — look for @bot mention trigger.
  */
 export async function handleIssueComment(
   payload: IssueCommentPayload,
@@ -158,9 +158,18 @@ export async function handleIssueComment(
   // Must be a PR comment (issues have no pull_request field)
   if (!issue.pull_request) return;
 
-  // Check for /review trigger
+  // Check for @bot mention with "review" keyword
   const body = comment.body.trim();
-  if (!body.startsWith("/review")) return;
+  let botSlug: string;
+  try {
+    botSlug = await getAppSlug(ctx.appConfig);
+  } catch {
+    console.warn("[webhook] Failed to get app slug, cannot detect @mentions");
+    return;
+  }
+
+  const mentionPattern = new RegExp(`@${botSlug}\\s+review`, "i");
+  if (!mentionPattern.test(body)) return;
 
   const owner = repository.owner.login;
   const repo = repository.name;
@@ -182,8 +191,8 @@ export async function handleIssueComment(
     return;
   }
 
-  // Extract optional custom instructions from comment
-  const customInstructions = body.replace(/^\/review\s*/, "").trim() || undefined;
+  // Extract optional custom instructions after "review"
+  const customInstructions = body.replace(new RegExp(`@${botSlug}\\s+review\\s*`, "i"), "").trim() || undefined;
 
   const reviewOptions: ReviewOptions = {
     ...ctx.reviewOptions,

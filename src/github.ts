@@ -8,6 +8,27 @@ interface AppConfig {
   privateKeyPath: string;
 }
 
+// Cache the app slug so we only fetch it once
+let cachedAppSlug: string | undefined;
+
+/**
+ * Get the GitHub App's slug (used for @mention detection).
+ * Users mention the bot as @{slug}, e.g. @my-code-reviewer.
+ */
+export async function getAppSlug(config: AppConfig): Promise<string> {
+  if (cachedAppSlug) return cachedAppSlug;
+
+  const privateKey = fs.readFileSync(config.privateKeyPath, "utf-8");
+  const appOctokit = new Octokit({
+    authStrategy: createAppAuth,
+    auth: { appId: config.appId, privateKey },
+  });
+
+  const { data } = await appOctokit.rest.apps.getAuthenticated();
+  cachedAppSlug = data!.slug ?? data!.name;
+  return cachedAppSlug;
+}
+
 export function createInstallationOctokit(
   config: AppConfig,
   installationId: number

@@ -7,6 +7,7 @@ vi.mock("../src/github.js", () => ({
   postReaction: vi.fn(),
   postPRReaction: vi.fn(),
   resolveOutdatedComments: vi.fn(() => 0),
+  getAppSlug: vi.fn(() => Promise.resolve("my-code-reviewer")),
 }));
 
 vi.mock("../src/review.js", () => ({
@@ -125,14 +126,14 @@ describe("handleIssueComment", () => {
 
   const manualCtx = { ...baseCtx, reviewMode: "manual" as const };
 
-  it("triggers review on /review command in manual mode", async () => {
-    await handleIssueComment(commentPayload("/review"), manualCtx);
+  it("triggers review on @bot mention in manual mode", async () => {
+    await handleIssueComment(commentPayload("@my-code-reviewer review"), manualCtx);
     expect(postReaction).toHaveBeenCalled();
     expect(runReview).toHaveBeenCalled();
   });
 
-  it("ignores /review command when not in manual mode", async () => {
-    await handleIssueComment(commentPayload("/review"), baseCtx);
+  it("ignores @bot mention when not in manual mode", async () => {
+    await handleIssueComment(commentPayload("@my-code-reviewer review"), baseCtx);
     expect(runReview).not.toHaveBeenCalled();
   });
 
@@ -144,7 +145,7 @@ describe("handleIssueComment", () => {
   it("ignores comments on issues (not PRs)", async () => {
     const payload: IssueCommentPayload = {
       action: "created",
-      comment: { id: 2, body: "/review", user: { login: "dev" } },
+      comment: { id: 2, body: "@my-code-reviewer review", user: { login: "dev" } },
       issue: { number: 1 },
       repository: { name: "repo", owner: { login: "owner" } },
       installation: { id: 42 },
@@ -153,8 +154,8 @@ describe("handleIssueComment", () => {
     expect(runReview).not.toHaveBeenCalled();
   });
 
-  it("passes custom instructions from /review command", async () => {
-    const payload = commentPayload("/review focus on SQL injection");
+  it("passes custom instructions from @bot mention", async () => {
+    const payload = commentPayload("@my-code-reviewer review focus on SQL injection");
     payload.comment.id = 99; // unique ID to avoid duplicate review lock
     await handleIssueComment(payload, manualCtx);
     expect(runReview).toHaveBeenCalledWith(

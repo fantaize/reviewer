@@ -2,6 +2,21 @@
 
 A self-hosted GitHub bot that automatically reviews your pull requests using Claude. It finds bugs, security issues, and style problems — then posts inline comments just like a human reviewer would.
 
+## Why Self-Host?
+
+Anthropic's managed Code Review costs **$15-80+ per review**. [Real-world benchmarks](https://zenn.dev/canriy_tech_blog) show it hitting **$31 for a 70-line Markdown diff** and **$78 for a large Go PR** — that's potentially **$15,000+/month** for an active team.
+
+This project gives you the same multi-agent architecture for a fraction of the cost:
+
+| | Managed Code Review | This Project (API key) | This Project (subscription) |
+|---|---|---|---|
+| Small PR | $15-31 | $1-3 | $0 (included) |
+| Large PR | $50-80 | $8-20 | $0 (included) |
+| Review time | 20-47 min | 1-3 min | 1-3 min |
+| Setup | Toggle in dashboard | Self-host | Self-host |
+
+You get the same review depth — parallel agents, codebase exploration, adversarial verification — running on your own infrastructure.
+
 ## What It Does
 
 When you open a PR, the bot:
@@ -214,7 +229,7 @@ volumes:
 | `MODEL` | No | `claude-sonnet-4-6` | Model for analysis agents |
 | `VERIFIER_MODEL` | No | same as `MODEL` | Model for verification agent |
 | `EFFORT` | No | `high` | Reasoning effort: `low` / `medium` / `high` / `max` |
-| `REVIEW_MODE` | No | `once` | When to review: `once`, `every_push`, or `manual` |
+| `REVIEW_MODE` | No | `once` | When to review: `once`, `every_push`, or `manual` (`@bot review`) |
 
 ### Review Modes
 
@@ -222,14 +237,14 @@ volumes:
 |---|---|---|
 | `once` | PR creation | Reviews once when a PR is opened or marked ready for review. Default. |
 | `every_push` | Every push | Reviews on every push to the PR, plus on creation. Resolves old threads when issues are fixed. |
-| `manual` | `/review` command | Only reviews when someone comments `/review` on the PR. |
+| `manual` | `@bot review` | Only reviews when someone mentions the bot with "review" on the PR. |
 
 Set `REVIEW_MODE` in your `.env`:
 
 ```bash
 REVIEW_MODE=once          # review once when PR is opened (default)
 REVIEW_MODE=every_push    # re-review on every push
-REVIEW_MODE=manual        # only review when asked via /review comment
+REVIEW_MODE=manual        # only review when someone comments @bot review
 ```
 
 ### Per-Repo Rules (optional)
@@ -262,10 +277,10 @@ This is a financial services app. Focus on data validation and auth.
 
 **`every_push` mode** — the bot reviews on every push. When you fix all the issues and push again, it resolves the old review threads and approves.
 
-**`manual` mode** — the bot only reviews when you comment `/review` on a PR. You can add instructions:
+**`manual` mode** — the bot only reviews when you mention it on a PR. The bot name is auto-detected from your GitHub App. You can add instructions after "review":
 
 ```
-/review focus on the database migration and check for data loss
+@my-code-reviewer review focus on the database migration and check for data loss
 ```
 
 ---
