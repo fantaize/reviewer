@@ -1,5 +1,7 @@
 # AI Code Reviewer
 
+> **Disclaimer:** This is an independent, community-built recreation of Anthropic's [Claude Code Review](https://code.claude.com/docs/en/code-review) feature. It is **not affiliated with, endorsed by, or connected to Anthropic** in any way. The behavior, output format, and agent architecture were reverse-engineered from publicly available screenshots, documentation, and blog posts. This project exists so that individuals and small teams can self-host a similar experience using their own Claude API keys or Claude Code subscriptions, without needing a Teams or Enterprise plan.
+
 A self-hosted GitHub bot that automatically reviews your pull requests using Claude. It finds bugs, security issues, and style problems — then posts inline comments just like a human reviewer would.
 
 ## Why Self-Host?
