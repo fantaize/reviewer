@@ -51,12 +51,14 @@ describe("buildReviewComments", () => {
     expect(overflowFindings).toHaveLength(1);
   });
 
-  it("shows prose summary above fold and structured content inside details", () => {
+  it("shows severity emoji and prose summary above fold, structured content inside details", () => {
     const findings = [makeFinding()];
     const { inlineComments } = buildReviewComments(findings, SAMPLE_DIFF);
     const body = inlineComments[0].body;
+    // Severity emoji prefix for normal issues (🔴)
+    expect(body).toMatch(/^🔴/);
     // Prose summary is visible above the fold
-    expect(body).toMatch(/^This function has a bug/);
+    expect(body).toContain("This function has a bug");
     // Structured description is inside details
     expect(body).toContain("<details>");
     expect(body).toContain("Extended reasoning");
@@ -66,26 +68,37 @@ describe("buildReviewComments", () => {
     // No confidence score
     expect(body).not.toContain("confidence:");
   });
+
+  it("shows 'Nit:' label for nit severity", () => {
+    const findings = [makeFinding({ severity: "nit" })];
+    const { inlineComments } = buildReviewComments(findings, SAMPLE_DIFF);
+    const body = inlineComments[0].body;
+    expect(body).toMatch(/🟡 Nit:/);
+  });
 });
 
 describe("buildReviewBody", () => {
-  it("shows 'no issues' message when no findings", () => {
+  it("shows LGTM message with extended reasoning when no findings", () => {
     const body = buildReviewBody([], [], 10000);
-    expect(body).toContain("No issues found");
+    expect(body).toContain("LGTM");
     expect(body).toContain("look good");
+    expect(body).toContain("<details>");
+    expect(body).toContain("Extended reasoning");
   });
 
-  it("lists findings with file, line, and summary", () => {
+  it("lists findings inside extended reasoning with emojis", () => {
     const findings = [
       makeFinding({ severity: "normal" }),
       makeFinding({ id: "t2", severity: "nit", file: "src/other.ts", startLine: 5, title: "Nit issue", summary: "Minor style issue." }),
     ];
     const body = buildReviewBody(findings, [], 10000);
     expect(body).toContain("2 issues");
+    expect(body).toContain("<details>");
+    expect(body).toContain("Extended reasoning");
     expect(body).toContain("src/app.ts:13");
     expect(body).toContain("src/other.ts:5");
-    expect(body).toContain("issue");
-    expect(body).toContain("nit");
+    expect(body).toContain("🔴");
+    expect(body).toContain("🟡");
   });
 
   it("notes overflow findings", () => {

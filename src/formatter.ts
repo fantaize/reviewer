@@ -8,6 +8,12 @@ const SEVERITY_LABEL: Record<Severity, string> = {
   "pre-existing": "pre-existing",
 };
 
+const SEVERITY_EMOJI: Record<Severity, string> = {
+  normal: "\uD83D\uDD34",   // 🔴
+  nit: "\uD83D\uDFE1",       // 🟡
+  "pre-existing": "\uD83D\uDFE0", // 🟠
+};
+
 /**
  * Format a single finding as a GitHub review comment body.
  * Uses the structured section format: "What the bug is", "Concrete proof", "Impact and fix".
@@ -16,8 +22,11 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 function formatFindingComment(finding: VerifiedFinding): string {
   const lines: string[] = [];
 
-  // Visible prose summary above the fold
-  lines.push(finding.summary || finding.title);
+  // Severity prefix + visible prose summary above the fold
+  const emoji = SEVERITY_EMOJI[finding.severity];
+  const label = finding.severity === "nit" ? "Nit" : finding.severity === "pre-existing" ? "Pre-existing" : "";
+  const prefix = label ? `${emoji} ${label}: ` : `${emoji} `;
+  lines.push(`${prefix}${finding.summary || finding.title}`);
 
   // Collapsible extended reasoning with full structured analysis
   lines.push("");
@@ -99,24 +108,40 @@ export function buildReviewBody(
   totalDuration: number
 ): string {
   if (findings.length === 0) {
-    return `No issues found in ${formatDuration(totalDuration)} \u2014 the changes look good.`;
+    const lines: string[] = [];
+    lines.push(`LGTM \u2014 no issues found in ${formatDuration(totalDuration)}, the changes look good.`);
+    lines.push("");
+    lines.push("<details>");
+    lines.push(`<summary>Extended reasoning\u2026</summary>`);
+    lines.push("");
+    lines.push(`Reviewed ${findings.length} findings across the changed files. No issues met the confidence threshold.`);
+    lines.push("");
+    lines.push("</details>");
+    return lines.join("\n");
   }
 
   const lines: string[] = [];
 
   lines.push(`Found **${findings.length} issue${findings.length !== 1 ? "s" : ""}** in ${formatDuration(totalDuration)}.`);
   lines.push("");
+  lines.push("<details>");
+  lines.push(`<summary>Extended reasoning\u2026</summary>`);
+  lines.push("");
 
   for (let i = 0; i < findings.length; i++) {
     const f = findings[i];
+    const emoji = SEVERITY_EMOJI[f.severity];
     const label = SEVERITY_LABEL[f.severity];
-    lines.push(`${i + 1}. **${f.file}:${f.startLine}** \u2014 ${f.summary || f.title} *(${label})*`);
+    lines.push(`${i + 1}. ${emoji} **${f.file}:${f.startLine}** \u2014 ${f.summary || f.title} *(${label})*`);
   }
 
   if (overflowFindings.length > 0) {
     lines.push("");
     lines.push("*Issues outside the changed lines are listed above but could not be attached as inline comments.*");
   }
+
+  lines.push("");
+  lines.push("</details>");
 
   return lines.join("\n");
 }
