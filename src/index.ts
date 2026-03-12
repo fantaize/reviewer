@@ -12,6 +12,7 @@ import {
   handleIssueComment,
   type PullRequestPayload,
   type IssueCommentPayload,
+  type ReviewMode,
 } from "./webhook.js";
 
 // ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ const MODEL = process.env.MODEL ?? "claude-sonnet-4-6";
 const VERIFIER_MODEL = process.env.VERIFIER_MODEL || undefined;
 const EFFORT = (process.env.EFFORT ?? "high") as "low" | "medium" | "high" | "max";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || undefined;
-const ALLOW_MANUAL_REVIEW = process.env.ALLOW_MANUAL_REVIEW === "true";
+const REVIEW_MODE = (process.env.REVIEW_MODE ?? "once") as ReviewMode;
 
 // ---------------------------------------------------------------------------
 // Startup validation
@@ -46,6 +47,9 @@ if (!WEBHOOK_SECRET) {
 }
 if (!["low", "medium", "high", "max"].includes(EFFORT)) {
   errors.push(`Invalid EFFORT value: ${EFFORT} (must be low, medium, high, or max)`);
+}
+if (!["once", "every_push", "manual"].includes(REVIEW_MODE)) {
+  errors.push(`Invalid REVIEW_MODE value: ${REVIEW_MODE} (must be once, every_push, or manual)`);
 }
 if (errors.length > 0) {
   console.error("\n  Configuration errors:\n");
@@ -105,7 +109,7 @@ app.post("/webhook", (req, res) => {
       confidenceThreshold: CONFIDENCE_THRESHOLD,
       modelConfig: { model: MODEL, effort: EFFORT, apiKey: ANTHROPIC_API_KEY, verifierModel: VERIFIER_MODEL },
     },
-    allowManualReview: ALLOW_MANUAL_REVIEW,
+    reviewMode: REVIEW_MODE,
   };
 
   // Route events
@@ -124,7 +128,7 @@ app.listen(PORT, () => {
   console.log("");
   console.log("  AI Code Reviewer");
   console.log(`  Model: ${MODEL} | Verifier: ${VERIFIER_MODEL ?? MODEL} | Effort: ${EFFORT} | Confidence threshold: ${CONFIDENCE_THRESHOLD}`);
-  console.log(`  Manual /review command: ${ALLOW_MANUAL_REVIEW ? "enabled" : "disabled"}`);
+  console.log(`  Review mode: ${REVIEW_MODE}`);
   console.log(`  Webhook:  POST http://localhost:${PORT}/webhook`);
   console.log(`  Health:   GET  http://localhost:${PORT}/`);
 

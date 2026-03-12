@@ -6,10 +6,12 @@ interface AppConfig {
   privateKeyPath: string;
 }
 
+export type ReviewMode = "once" | "every_push" | "manual";
+
 interface WebhookContext {
   appConfig: AppConfig;
   reviewOptions: ReviewOptions;
-  allowManualReview: boolean;
+  reviewMode: ReviewMode;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,7 +70,16 @@ export async function handlePullRequest(
 ): Promise<void> {
   const { action, pull_request, repository, installation } = payload;
 
-  if (!["opened", "synchronize", "reopened", "ready_for_review"].includes(action)) return;
+  // Determine which actions to handle based on review mode
+  const mode = ctx.reviewMode;
+
+  if (mode === "manual") return; // manual mode doesn't respond to PR events
+
+  const allowedActions = mode === "every_push"
+    ? ["opened", "synchronize", "reopened", "ready_for_review"]
+    : ["opened", "ready_for_review"]; // "once" mode
+
+  if (!allowedActions.includes(action)) return;
   if (!installation?.id) {
     console.warn("[webhook] No installation ID in payload, skipping");
     return;
@@ -137,7 +148,7 @@ export async function handleIssueComment(
   payload: IssueCommentPayload,
   ctx: WebhookContext
 ): Promise<void> {
-  if (!ctx.allowManualReview) return;
+  if (ctx.reviewMode !== "manual") return;
 
   const { action, comment, issue, repository, installation } = payload;
 

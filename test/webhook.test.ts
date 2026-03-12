@@ -23,7 +23,7 @@ const baseCtx = {
     confidenceThreshold: 80,
     modelConfig: { model: "claude-opus-4-6", effort: "max" as const },
   },
-  allowManualReview: true,
+  reviewMode: "every_push" as const,
 };
 
 function prPayload(overrides: Partial<PullRequestPayload> = {}): PullRequestPayload {
@@ -81,6 +81,24 @@ describe("handlePullRequest", () => {
     expect(runReview).toHaveBeenCalled();
   });
 
+  it("skips synchronize in 'once' mode", async () => {
+    const onceCtx = { ...baseCtx, reviewMode: "once" as const };
+    await handlePullRequest(
+      prPayload({
+        action: "synchronize",
+        pull_request: { number: 400, title: "Push", draft: false, head: { sha: "unique4" }, base: { sha: "b" } },
+      }),
+      onceCtx
+    );
+    expect(runReview).not.toHaveBeenCalled();
+  });
+
+  it("skips all PR events in 'manual' mode", async () => {
+    const manualCtx = { ...baseCtx, reviewMode: "manual" as const };
+    await handlePullRequest(prPayload(), manualCtx);
+    expect(runReview).not.toHaveBeenCalled();
+  });
+
   it("calls resolveOutdatedComments on synchronize with 0 findings", async () => {
     await handlePullRequest(
       prPayload({
@@ -105,20 +123,21 @@ describe("handleIssueComment", () => {
     };
   }
 
-  it("triggers review on /review command when enabled", async () => {
-    await handleIssueComment(commentPayload("/review"), baseCtx);
+  const manualCtx = { ...baseCtx, reviewMode: "manual" as const };
+
+  it("triggers review on /review command in manual mode", async () => {
+    await handleIssueComment(commentPayload("/review"), manualCtx);
     expect(postReaction).toHaveBeenCalled();
     expect(runReview).toHaveBeenCalled();
   });
 
-  it("ignores /review command when disabled", async () => {
-    const disabledCtx = { ...baseCtx, allowManualReview: false };
-    await handleIssueComment(commentPayload("/review"), disabledCtx);
+  it("ignores /review command when not in manual mode", async () => {
+    await handleIssueComment(commentPayload("/review"), baseCtx);
     expect(runReview).not.toHaveBeenCalled();
   });
 
   it("ignores non-review comments", async () => {
-    await handleIssueComment(commentPayload("looks good to me"), baseCtx);
+    await handleIssueComment(commentPayload("looks good to me"), manualCtx);
     expect(runReview).not.toHaveBeenCalled();
   });
 
@@ -130,14 +149,14 @@ describe("handleIssueComment", () => {
       repository: { name: "repo", owner: { login: "owner" } },
       installation: { id: 42 },
     };
-    await handleIssueComment(payload, baseCtx);
+    await handleIssueComment(payload, manualCtx);
     expect(runReview).not.toHaveBeenCalled();
   });
 
   it("passes custom instructions from /review command", async () => {
     const payload = commentPayload("/review focus on SQL injection");
     payload.comment.id = 99; // unique ID to avoid duplicate review lock
-    await handleIssueComment(payload, baseCtx);
+    await handleIssueComment(payload, manualCtx);
     expect(runReview).toHaveBeenCalledWith(
       expect.anything(),
       "owner",

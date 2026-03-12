@@ -214,7 +214,23 @@ volumes:
 | `MODEL` | No | `claude-sonnet-4-6` | Model for analysis agents |
 | `VERIFIER_MODEL` | No | same as `MODEL` | Model for verification agent |
 | `EFFORT` | No | `high` | Reasoning effort: `low` / `medium` / `high` / `max` |
-| `ALLOW_MANUAL_REVIEW` | No | `false` | Allow `/review` comments to trigger reviews |
+| `REVIEW_MODE` | No | `once` | When to review: `once`, `every_push`, or `manual` |
+
+### Review Modes
+
+| Mode | Trigger | Description |
+|---|---|---|
+| `once` | PR creation | Reviews once when a PR is opened or marked ready for review. Default. |
+| `every_push` | Every push | Reviews on every push to the PR, plus on creation. Resolves old threads when issues are fixed. |
+| `manual` | `/review` command | Only reviews when someone comments `/review` on the PR. |
+
+Set `REVIEW_MODE` in your `.env`:
+
+```bash
+REVIEW_MODE=once          # review once when PR is opened (default)
+REVIEW_MODE=every_push    # re-review on every push
+REVIEW_MODE=manual        # only review when asked via /review comment
+```
 
 ### Per-Repo Rules (optional)
 
@@ -242,9 +258,11 @@ This is a financial services app. Focus on data validation and auth.
 
 ## Usage
 
-**Automatic** — the bot reviews every PR when it's opened, reopened, or updated. No action needed.
+**`once` mode (default)** — the bot reviews once when a PR is opened or marked ready for review.
 
-**Manual** — set `ALLOW_MANUAL_REVIEW=true`, then comment `/review` on any PR:
+**`every_push` mode** — the bot reviews on every push. When you fix all the issues and push again, it resolves the old review threads and approves.
+
+**`manual` mode** — the bot only reviews when you comment `/review` on a PR. You can add instructions:
 
 ```
 /review focus on the database migration and check for data loss
