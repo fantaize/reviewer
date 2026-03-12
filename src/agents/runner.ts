@@ -40,7 +40,7 @@ export async function runAgent(config: AgentConfig): Promise<Finding[]> {
       options: {
         systemPrompt: config.systemPrompt,
         model: config.model ?? "claude-opus-4-6",
-        maxTurns: config.maxTurns ?? (hasCodebase ? 10 : 5),
+        maxTurns: config.maxTurns ?? (hasCodebase ? 200 : 50),
         permissionMode: "dontAsk",
         allowedTools: hasCodebase ? ["Read", "Grep", "Glob"] : [],
         env: agentEnv,

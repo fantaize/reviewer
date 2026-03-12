@@ -27,9 +27,9 @@ const CONFIDENCE_THRESHOLD = parseInt(
   10
 );
 
-const MODEL = process.env.MODEL ?? "claude-sonnet-4-6";
+const MODEL = process.env.MODEL ?? "claude-opus-4-6";
 const VERIFIER_MODEL = process.env.VERIFIER_MODEL || undefined;
-const EFFORT = (process.env.EFFORT ?? "high") as "low" | "medium" | "high" | "max";
+const EFFORT = (process.env.EFFORT ?? "max") as "low" | "medium" | "high" | "max";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || undefined;
 const REVIEW_MODE = (process.env.REVIEW_MODE ?? "once") as ReviewMode;
 

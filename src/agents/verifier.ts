@@ -135,7 +135,7 @@ async function verifyBatch(
       options: {
         systemPrompt: SYSTEM_PROMPT,
         model: modelConfig.verifierModel ?? modelConfig.model,
-        maxTurns: hasCodebase ? 8 : 3,
+        maxTurns: hasCodebase ? 200 : 50,
         permissionMode: "dontAsk",
         allowedTools: hasCodebase ? ["Read", "Grep", "Glob"] : [],
         env: agentEnv,

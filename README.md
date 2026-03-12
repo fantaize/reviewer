@@ -12,9 +12,9 @@ This project gives you the same multi-agent architecture for a fraction of the c
 
 | | Managed Code Review | This Project (API key) | This Project (subscription) |
 |---|---|---|---|
-| Small PR | $15-31 | $1-3 | $0 (included) |
-| Large PR | $50-80 | $8-20 | $0 (included) |
-| Review time | 20-47 min | 1-3 min | 1-3 min |
+| Small PR | $15-31 | $5-15 | $0 (included) |
+| Large PR | $50-80 | $20-50 | $0 (included) |
+| Review time | 20-47 min | 10-30 min | 10-30 min |
 | Setup | Toggle in dashboard | Self-host | Self-host |
 
 You get the same review depth — parallel agents, codebase exploration, adversarial verification — running on your own infrastructure.
@@ -226,9 +226,9 @@ volumes:
 | `ANTHROPIC_API_KEY` | Yes* | — | Claude API key (*or use subscription auth) |
 | `PORT` | No | `3000` | Server port |
 | `CONFIDENCE_THRESHOLD` | No | `80` | Min confidence to post a finding (0-100) |
-| `MODEL` | No | `claude-sonnet-4-6` | Model for analysis agents |
+| `MODEL` | No | `claude-opus-4-6` | Model for analysis agents |
 | `VERIFIER_MODEL` | No | same as `MODEL` | Model for verification agent |
-| `EFFORT` | No | `high` | Reasoning effort: `low` / `medium` / `high` / `max` |
+| `EFFORT` | No | `max` | Reasoning effort: `low` / `medium` / `high` / `max` |
 | `REVIEW_MODE` | No | `once` | When to review: `once`, `every_push`, or `manual` (`@bot review`) |
 
 ### Review Modes
@@ -287,17 +287,17 @@ This is a financial services app. Focus on data validation and auth.
 
 ## Cost
 
-Each review runs 3 analysis agents + 1 verification agent. Default config uses Sonnet for analysis and Opus for verification.
+Each review runs 3 analysis agents + 1 verification agent + 1 summarizer. Default config uses Opus with max reasoning effort for maximum depth.
 
 | PR Size | Estimated Cost |
 |---|---|
-| Small (<50 lines) | $1-3 |
-| Medium (50-500 lines) | $3-8 |
-| Large (500+ lines) | $8-20 |
+| Small (<50 lines) | $5-15 |
+| Medium (50-500 lines) | $15-30 |
+| Large (500+ lines) | $30-50 |
 
-To reduce costs: use `EFFORT=medium` or set both `MODEL` and `VERIFIER_MODEL` to `claude-sonnet-4-6`.
+Default config optimizes for maximum review depth (~10-30 minutes per review). Agents get up to 200 turns each with full codebase access including Bash, Read, Grep, and Glob tools.
 
-For max quality: set `MODEL=claude-opus-4-6` with `EFFORT=max`.
+To reduce costs: set `MODEL=claude-sonnet-4-6` and `EFFORT=medium`.
 
 ---
 
