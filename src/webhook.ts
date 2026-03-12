@@ -1,4 +1,4 @@
-import { createInstallationOctokit, postReaction, postSummaryComment, deleteComment, resolveOutdatedComments } from "./github.js";
+import { createInstallationOctokit, postReaction, postPRReaction, resolveOutdatedComments } from "./github.js";
 import { runReview, type ReviewOptions } from "./review.js";
 
 interface AppConfig {
@@ -9,6 +9,7 @@ interface AppConfig {
 interface WebhookContext {
   appConfig: AppConfig;
   reviewOptions: ReviewOptions;
+  allowManualReview: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,27 +98,11 @@ export async function handlePullRequest(
 
   const octokit = createInstallationOctokit(ctx.appConfig, installation.id);
 
-  // On push to PR branch, auto-resolve outdated review comments
-  if (action === "synchronize") {
-    try {
-      const resolved = await resolveOutdatedComments(octokit, owner, repo, pullNumber);
-      if (resolved > 0) {
-        console.log(`[webhook] Auto-resolved ${resolved} outdated review comment(s)`);
-      }
-    } catch (err) {
-      console.warn("[webhook] Failed to auto-resolve comments:", err);
-    }
-  }
-
-  // Post initial acknowledgment (will be deleted when review completes)
-  let progressCommentId: number | undefined;
+  // React with eyes to acknowledge the PR
   try {
-    progressCommentId = await postSummaryComment(
-      octokit, owner, repo, pullNumber,
-      "\u{1F440} AI Code Review in progress..."
-    );
-  } catch {
-    // Non-critical, continue
+    await postPRReaction(octokit, owner, repo, pullNumber, "eyes");
+  } catch (err) {
+    console.warn("[webhook] Failed to post eyes reaction:", err);
   }
 
   try {
@@ -125,17 +110,22 @@ export async function handlePullRequest(
     console.log(
       `[webhook] Review complete: ${result.findingsCount} findings in ${result.duration}ms`
     );
+
+    // After a push (synchronize), if the re-review found no issues,
+    // resolve old comments and dismiss stale REQUEST_CHANGES reviews
+    if (action === "synchronize" && result.findingsCount === 0) {
+      try {
+        const resolved = await resolveOutdatedComments(octokit, owner, repo, pullNumber);
+        if (resolved > 0) {
+          console.log(`[webhook] Resolved ${resolved} outdated comment(s) after clean re-review`);
+        }
+      } catch (err) {
+        console.warn("[webhook] Failed to resolve outdated comments:", err);
+      }
+    }
   } catch (err) {
     console.error(`[webhook] Review failed for ${owner}/${repo}#${pullNumber}:`, err);
-    await postSummaryComment(
-      octokit, owner, repo, pullNumber,
-      `**Code Review**\n\nReview failed: ${err instanceof Error ? err.message : "Unknown error"}. Please try again by commenting \`/review\`.`
-    );
   } finally {
-    // Clean up progress comment
-    if (progressCommentId) {
-      try { await deleteComment(octokit, owner, repo, progressCommentId); } catch {}
-    }
     releaseReviewLock(key);
   }
 }
@@ -147,6 +137,8 @@ export async function handleIssueComment(
   payload: IssueCommentPayload,
   ctx: WebhookContext
 ): Promise<void> {
+  if (!ctx.allowManualReview) return;
+
   const { action, comment, issue, repository, installation } = payload;
 
   if (action !== "created") return;
@@ -194,13 +186,6 @@ export async function handleIssueComment(
     );
   } catch (err) {
     console.error(`[webhook] Manual review failed:`, err);
-    await postSummaryComment(
-      octokit,
-      owner,
-      repo,
-      pullNumber,
-      `**Code Review**\n\nReview failed: ${err instanceof Error ? err.message : "Unknown error"}`
-    );
   } finally {
     releaseReviewLock(key);
   }

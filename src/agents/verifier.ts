@@ -48,8 +48,8 @@ CONFIDENCE SCORING:
 
 SEVERITY ADJUSTMENT:
 You may adjust severity if the original agent miscategorized:
-- A "critical" that requires extremely unlikely conditions → downgrade to "warning"
-- A "nit" that actually causes data loss → upgrade to "critical"
+- A "normal" that is purely cosmetic → downgrade to "nit"
+- A "nit" that actually causes data loss → upgrade to "normal"
 - Set to "pre-existing" if the issue existed before this PR
 
 OUTPUT FORMAT:
@@ -59,7 +59,7 @@ Output a JSON array inside a \`\`\`json code fence:
   "findingId": "<id of original finding>",
   "confidence": <0-100>,
   "verifierReasoning": "<Why you assigned this confidence. Be specific — reference the code.>",
-  "adjustedSeverity": "critical" | "warning" | "nit" | "pre-existing" | null
+  "adjustedSeverity": "normal" | "nit" | "pre-existing" | null
 }
 
 adjustedSeverity should be null if unchanged.`;
@@ -134,8 +134,8 @@ async function verifyBatch(
       prompt: buildVerifierPrompt(context, findings),
       options: {
         systemPrompt: SYSTEM_PROMPT,
-        model: modelConfig.model,
-        maxTurns: hasCodebase ? 15 : 5,
+        model: modelConfig.verifierModel ?? modelConfig.model,
+        maxTurns: hasCodebase ? 8 : 3,
         permissionMode: "dontAsk",
         allowedTools: hasCodebase ? ["Read", "Grep", "Glob"] : [],
         env: agentEnv,
@@ -287,12 +287,13 @@ export async function runVerifier(
 
   return findings.map((finding) => {
     const verification = verificationMap.get(finding.id);
-    const validSeverities = ["critical", "warning", "nit", "pre-existing"];
-    const adjusted =
-      verification?.adjustedSeverity &&
-      validSeverities.includes(verification.adjustedSeverity)
-        ? (verification.adjustedSeverity as VerifiedFinding["severity"])
-        : finding.severity;
+    const severityMap: Record<string, VerifiedFinding["severity"]> = {
+      critical: "normal", warning: "normal", normal: "normal",
+      nit: "nit", "pre-existing": "pre-existing",
+    };
+    const adjusted = verification?.adjustedSeverity
+      ? (severityMap[verification.adjustedSeverity] ?? finding.severity)
+      : finding.severity;
 
     return {
       ...finding,

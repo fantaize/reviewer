@@ -175,7 +175,7 @@ function deduplicateFindings(findings: Finding[]): Finding[] {
 
     if (existing) {
       // Keep the one with higher severity
-      const severityOrder = { critical: 0, warning: 1, nit: 2, "pre-existing": 3 };
+      const severityOrder = { normal: 0, nit: 1, "pre-existing": 2 };
       if (severityOrder[finding.severity] < severityOrder[existing.severity]) {
         Object.assign(existing, {
           severity: finding.severity,
@@ -216,7 +216,7 @@ function titleSimilarity(a: string, b: string): number {
 }
 
 function rankFindings(findings: VerifiedFinding[]): VerifiedFinding[] {
-  const severityOrder = { critical: 0, warning: 1, nit: 2, "pre-existing": 3 };
+  const severityOrder = { normal: 0, nit: 1, "pre-existing": 2 };
 
   return [...findings].sort((a, b) => {
     // By severity (critical first)

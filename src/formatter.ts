@@ -1,12 +1,11 @@
-import type { VerifiedFinding, AgentResult, Severity } from "./agents/types.js";
+import type { VerifiedFinding, Severity } from "./agents/types.js";
 import type { ReviewComment } from "./github.js";
 import { buildDiffMap, isLineInDiff, findClosestDiffLine } from "./diff.js";
 
 const SEVERITY_LABEL: Record<Severity, string> = {
-  critical: "\uD83D\uDD34 Bug",
-  warning: "\uD83D\uDD34 Warning",
-  nit: "\uD83D\uDFE1 Nit",
-  "pre-existing": "\uD83D\uDFE3 Pre-existing",
+  normal: "issue",
+  nit: "nit",
+  "pre-existing": "pre-existing",
 };
 
 /**
@@ -17,23 +16,21 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 function formatFindingComment(finding: VerifiedFinding): string {
   const lines: string[] = [];
 
-  // The description contains the full structured comment with ### headings
-  lines.push(finding.description);
+  // Visible prose summary above the fold
+  lines.push(finding.summary || finding.title);
 
-  // Collapsible extended reasoning
+  // Collapsible extended reasoning with full structured analysis
   lines.push("");
   lines.push("<details>");
   lines.push(`<summary>Extended reasoning\u2026</summary>`);
+  lines.push("");
+  lines.push(finding.description);
   lines.push("");
   lines.push(finding.reasoning);
   if (finding.verifierReasoning) {
     lines.push("");
     lines.push(`**Verification:** ${finding.verifierReasoning}`);
   }
-  lines.push("");
-  lines.push(
-    `*${SEVERITY_LABEL[finding.severity]} \u00B7 Confidence: ${finding.confidence}/100*`
-  );
   lines.push("");
   lines.push("</details>");
 
@@ -93,77 +90,33 @@ export function buildReviewComments(
 }
 
 /**
- * Format the summary comment posted on the PR.
+ * Build the review body — a global message listing all findings.
+ * This stays visible even when inline threads are resolved.
  */
-export function formatSummaryComment(
+export function buildReviewBody(
   findings: VerifiedFinding[],
   overflowFindings: VerifiedFinding[],
-  agentResults: AgentResult[],
   totalDuration: number
 ): string {
+  if (findings.length === 0) {
+    return `No issues found in ${formatDuration(totalDuration)} \u2014 the changes look good.`;
+  }
+
   const lines: string[] = [];
 
-  if (findings.length === 0) {
-    lines.push("**Code Review**");
-    lines.push("");
-    lines.push(
-      `Reviewed ${agentResults.reduce((s, r) => s + r.findings.length, 0) || "all"} areas in ${formatDuration(totalDuration)}. No issues found \u2014 the changes look good.`
-    );
-    return lines.join("\n");
-  }
-
-  // Count by severity
-  const counts: Record<Severity, number> = {
-    critical: 0,
-    warning: 0,
-    nit: 0,
-    "pre-existing": 0,
-  };
-  for (const f of findings) {
-    counts[f.severity]++;
-  }
-
-  lines.push("**Code Review Summary**");
+  lines.push(`Found **${findings.length} issue${findings.length !== 1 ? "s" : ""}** in ${formatDuration(totalDuration)}.`);
   lines.push("");
 
-  // Concise severity breakdown with official markers
-  const parts: string[] = [];
-  if (counts.critical > 0) parts.push(`\uD83D\uDD34 ${counts.critical} critical`);
-  if (counts.warning > 0) parts.push(`\uD83D\uDD34 ${counts.warning} warning${counts.warning !== 1 ? "s" : ""}`);
-  if (counts.nit > 0) parts.push(`\uD83D\uDFE1 ${counts.nit} nit${counts.nit !== 1 ? "s" : ""}`);
-  if (counts["pre-existing"] > 0) parts.push(`\uD83D\uDFE3 ${counts["pre-existing"]} pre-existing`);
+  for (let i = 0; i < findings.length; i++) {
+    const f = findings[i];
+    const label = SEVERITY_LABEL[f.severity];
+    lines.push(`${i + 1}. **${f.file}:${f.startLine}** \u2014 ${f.summary || f.title} *(${label})*`);
+  }
 
-  lines.push(
-    `Found **${findings.length} issue${findings.length !== 1 ? "s" : ""}** (${parts.join(", ")}) in ${formatDuration(totalDuration)}.`
-  );
-
-  // Overflow findings (not in diff)
   if (overflowFindings.length > 0) {
     lines.push("");
-    lines.push(
-      "The following issues reference code outside the changed lines:"
-    );
-    lines.push("");
-    for (const f of overflowFindings) {
-      lines.push(
-        `- **${f.file}:${f.startLine}** \u2014 ${f.title} *(${SEVERITY_LABEL[f.severity]})*`
-      );
-    }
+    lines.push("*Issues outside the changed lines are listed above but could not be attached as inline comments.*");
   }
-
-  // Agent stats in details
-  lines.push("");
-  lines.push("<details>");
-  lines.push("<summary>Review details</summary>");
-  lines.push("");
-  for (const result of agentResults) {
-    const status = result.error ? "\u2717" : "\u2713";
-    lines.push(
-      `- ${status} **${result.agentName}**: ${result.findings.length} findings in ${formatDuration(result.duration)}`
-    );
-  }
-  lines.push("");
-  lines.push("</details>");
 
   return lines.join("\n");
 }

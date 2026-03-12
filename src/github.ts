@@ -117,7 +117,8 @@ export interface ReviewComment {
 
 /**
  * Post a review with inline comments on a pull request.
- * Uses event: 'COMMENT' — never approves or requests changes.
+ * Uses REQUEST_CHANGES when findings exist, APPROVE when clean.
+ * After posting, reacts to each inline comment with 👀 and 👎.
  */
 export async function postReview(
   octokit: Octokit,
@@ -126,14 +127,15 @@ export async function postReview(
   pullNumber: number,
   commitSha: string,
   comments: ReviewComment[],
-  summary: string
+  summary: string,
+  event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT" = "REQUEST_CHANGES"
 ): Promise<void> {
-  await octokit.rest.pulls.createReview({
+  const review = await octokit.rest.pulls.createReview({
     owner,
     repo,
     pull_number: pullNumber,
     commit_id: commitSha,
-    event: "COMMENT",
+    event,
     body: summary,
     comments: comments.map((c) => ({
       path: c.path,
@@ -144,6 +146,32 @@ export async function postReview(
       body: c.body,
     })),
   });
+
+  // React to each inline comment with 👀 and 👎
+  if (comments.length > 0) {
+    try {
+      const reviewComments = await octokit.rest.pulls.listCommentsForReview({
+        owner,
+        repo,
+        pull_number: pullNumber,
+        review_id: review.data.id,
+      });
+      for (const comment of reviewComments.data) {
+        try {
+          await octokit.rest.reactions.createForPullRequestReviewComment({
+            owner, repo, comment_id: comment.id, content: "eyes",
+          });
+          await octokit.rest.reactions.createForPullRequestReviewComment({
+            owner, repo, comment_id: comment.id, content: "-1",
+          });
+        } catch {
+          // Non-critical
+        }
+      }
+    } catch {
+      // Non-critical
+    }
+  }
 }
 
 /**
@@ -243,7 +271,8 @@ export async function updateCheckRun(
 }
 
 /**
- * Resolve (hide/minimize) outdated review comments from previous reviews.
+ * Resolve (hide/minimize) outdated review comments from previous reviews
+ * and dismiss any REQUEST_CHANGES reviews from the bot.
  * Uses GraphQL to minimize comments as "OUTDATED".
  */
 export async function resolveOutdatedComments(
@@ -265,29 +294,101 @@ export async function resolveOutdatedComments(
       c.body.includes("Extended reasoning\u2026") // our signature
   );
 
+  // Get the PR's review threads via GraphQL so we can resolve them
+  let threadMap = new Map<number, string>(); // comment ID → thread node ID
+  try {
+    const prData: any = await octokit.graphql(
+      `query($owner: String!, $repo: String!, $pr: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $pr) {
+            reviewThreads(first: 100) {
+              nodes {
+                id
+                isResolved
+                comments(first: 1) {
+                  nodes { databaseId }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      { owner, repo, pr: pullNumber }
+    );
+    const threads = prData.repository.pullRequest.reviewThreads.nodes;
+    for (const thread of threads) {
+      if (!thread.isResolved && thread.comments.nodes.length > 0) {
+        threadMap.set(thread.comments.nodes[0].databaseId, thread.id);
+      }
+    }
+  } catch (err) {
+    console.warn("[resolve] Failed to fetch review threads via GraphQL:", err);
+  }
+
+  console.log(`[resolve] Found ${botComments.length} bot comment(s), ${threadMap.size} unresolved thread(s)`);
+
   let resolved = 0;
   for (const comment of botComments) {
     try {
-      // Minimize the comment as outdated using GraphQL
-      await octokit.graphql(
-        `mutation($id: ID!) {
-          minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
-            minimizedComment { isMinimized }
-          }
-        }`,
-        { id: comment.node_id }
-      );
-      resolved++;
+      // React with 👍 to indicate the issue is resolved
+      await octokit.rest.reactions.createForPullRequestReviewComment({
+        owner, repo, comment_id: comment.id, content: "+1",
+      });
     } catch {
-      // May not have permission, skip
+      // Non-critical
     }
+    // Resolve the review thread
+    const threadId = threadMap.get(comment.id);
+    if (threadId) {
+      try {
+        await octokit.graphql(
+          `mutation($threadId: ID!) {
+            resolveReviewThread(input: {threadId: $threadId}) {
+              thread { isResolved }
+            }
+          }`,
+          { threadId }
+        );
+        resolved++;
+      } catch (err) {
+        console.warn(`[resolve] Failed to resolve thread for comment ${comment.id}:`, err);
+      }
+    } else {
+      console.log(`[resolve] No thread found for comment ${comment.id}`);
+    }
+  }
+
+  // Dismiss any outstanding REQUEST_CHANGES reviews from the bot
+  try {
+    const reviews = await octokit.rest.pulls.listReviews({
+      owner, repo, pull_number: pullNumber,
+    });
+    for (const review of reviews.data) {
+      if (
+        review.state === "CHANGES_REQUESTED" &&
+        (review as Record<string, unknown>).performed_via_github_app != null
+      ) {
+        try {
+          await octokit.rest.pulls.dismissReview({
+            owner, repo, pull_number: pullNumber,
+            review_id: review.id,
+            message: "Outdated review dismissed — new push received, re-reviewing.",
+          });
+          resolved++;
+        } catch {
+          // May not have permission
+        }
+      }
+    }
+  } catch {
+    // Non-critical
   }
 
   return resolved;
 }
 
 /**
- * Post an eyes reaction on a comment to acknowledge processing.
+ * Post a reaction on a comment to acknowledge processing.
  */
 export async function postReaction(
   octokit: Octokit,
@@ -303,3 +404,22 @@ export async function postReaction(
     content: reaction,
   });
 }
+
+/**
+ * Post a reaction on a PR/issue to acknowledge processing.
+ */
+export async function postPRReaction(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  reaction: "+1" | "-1" | "eyes" | "rocket" | "heart" = "eyes"
+): Promise<void> {
+  await octokit.rest.reactions.createForIssue({
+    owner,
+    repo,
+    issue_number: issueNumber,
+    content: reaction,
+  });
+}
+

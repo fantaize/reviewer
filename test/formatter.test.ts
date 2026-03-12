@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildReviewComments, formatSummaryComment } from "../src/formatter.js";
-import type { VerifiedFinding, AgentResult } from "../src/agents/types.js";
+import { buildReviewComments, buildReviewBody } from "../src/formatter.js";
+import type { VerifiedFinding } from "../src/agents/types.js";
 
 function makeFinding(overrides: Partial<VerifiedFinding> = {}): VerifiedFinding {
   return {
@@ -8,9 +8,10 @@ function makeFinding(overrides: Partial<VerifiedFinding> = {}): VerifiedFinding 
     file: "src/app.ts",
     startLine: 13,
     endLine: 13,
-    severity: "warning",
+    severity: "normal",
     category: "bug",
     title: "Test finding",
+    summary: "This function has a bug that causes incorrect behavior. Fix it by adding a null check.",
     description: "### What the bug is\n\nTest description",
     reasoning: "Test reasoning",
     confidence: 90,
@@ -50,60 +51,53 @@ describe("buildReviewComments", () => {
     expect(overflowFindings).toHaveLength(1);
   });
 
-  it("includes collapsible reasoning in comment body", () => {
+  it("shows prose summary above fold and structured content inside details", () => {
     const findings = [makeFinding()];
     const { inlineComments } = buildReviewComments(findings, SAMPLE_DIFF);
-    expect(inlineComments[0].body).toContain("<details>");
-    expect(inlineComments[0].body).toContain("Extended reasoning");
-    expect(inlineComments[0].body).toContain("Test reasoning");
-    expect(inlineComments[0].body).toContain("Verification:");
+    const body = inlineComments[0].body;
+    // Prose summary is visible above the fold
+    expect(body).toMatch(/^This function has a bug/);
+    // Structured description is inside details
+    expect(body).toContain("<details>");
+    expect(body).toContain("Extended reasoning");
+    expect(body).toContain("What the bug is");
+    expect(body).toContain("Test reasoning");
+    expect(body).toContain("Verification:");
+    // No confidence score
+    expect(body).not.toContain("confidence:");
   });
 });
 
-describe("formatSummaryComment", () => {
+describe("buildReviewBody", () => {
   it("shows 'no issues' message when no findings", () => {
-    const agentResults: AgentResult[] = [
-      { agentName: "bug-finder", findings: [], duration: 5000 },
-    ];
-    const summary = formatSummaryComment([], [], agentResults, 10000);
-    expect(summary).toContain("No issues found");
-    expect(summary).toContain("look good");
+    const body = buildReviewBody([], [], 10000);
+    expect(body).toContain("No issues found");
+    expect(body).toContain("look good");
   });
 
-  it("shows severity breakdown with emoji markers", () => {
+  it("lists findings with file, line, and summary", () => {
     const findings = [
-      makeFinding({ severity: "critical" }),
-      makeFinding({ id: "t2", severity: "nit" }),
+      makeFinding({ severity: "normal" }),
+      makeFinding({ id: "t2", severity: "nit", file: "src/other.ts", startLine: 5, title: "Nit issue", summary: "Minor style issue." }),
     ];
-    const agentResults: AgentResult[] = [
-      { agentName: "bug-finder", findings: [], duration: 5000 },
-    ];
-    const summary = formatSummaryComment(findings, [], agentResults, 10000);
-    expect(summary).toContain("2 issue");
-    // Check for emoji markers
-    expect(summary).toContain("\uD83D\uDD34"); // red circle for critical
-    expect(summary).toContain("\uD83D\uDFE1"); // yellow circle for nit
+    const body = buildReviewBody(findings, [], 10000);
+    expect(body).toContain("2 issues");
+    expect(body).toContain("src/app.ts:13");
+    expect(body).toContain("src/other.ts:5");
+    expect(body).toContain("issue");
+    expect(body).toContain("nit");
   });
 
-  it("includes overflow findings in summary", () => {
+  it("notes overflow findings", () => {
     const overflow = [makeFinding({ file: "src/other.ts", title: "Overflow bug" })];
-    const agentResults: AgentResult[] = [
-      { agentName: "bug-finder", findings: [], duration: 5000 },
-    ];
-    const summary = formatSummaryComment([...overflow], overflow, agentResults, 10000);
-    expect(summary).toContain("outside the changed lines");
-    expect(summary).toContain("Overflow bug");
+    const body = buildReviewBody([...overflow], overflow, 10000);
+    expect(body).toContain("outside the changed lines");
   });
 
-  it("includes agent stats in collapsible details", () => {
-    const agentResults: AgentResult[] = [
-      { agentName: "bug-finder", findings: [], duration: 3000 },
-      { agentName: "security-auditor", findings: [], duration: 5000 },
-    ];
+  it("does not expose internal agent names", () => {
     const findings = [makeFinding()];
-    const summary = formatSummaryComment(findings, [], agentResults, 10000);
-    expect(summary).toContain("bug-finder");
-    expect(summary).toContain("security-auditor");
-    expect(summary).toContain("<details>");
+    const body = buildReviewBody(findings, [], 10000);
+    expect(body).not.toContain("bug-finder");
+    expect(body).not.toContain("security-auditor");
   });
 });

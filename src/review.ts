@@ -3,7 +3,7 @@ import type { PRContext, ModelConfig } from "./agents/types.js";
 import { fetchPRDiff, fetchChangedFiles, postReview, postSummaryComment, getInstallationToken, createCheckRun, updateCheckRun } from "./github.js";
 import { loadReviewConfig } from "./config.js";
 import { orchestrate } from "./agents/orchestrator.js";
-import { buildReviewComments, formatSummaryComment } from "./formatter.js";
+import { buildReviewComments, buildReviewBody } from "./formatter.js";
 import { execSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,7 +53,7 @@ export async function runReview(
 
   // Guard: skip very large PRs
   if (diff.length > 200_000) {
-    const msg = "## \u{1F916} AI Code Review\n\nThis PR is too large for automated review (diff exceeds 200KB). Please consider breaking it into smaller PRs.";
+    const msg = "This PR is too large for automated review (diff exceeds 200KB). Please consider breaking it into smaller PRs.";
     await postSummaryComment(octokit, owner, repo, pullNumber, msg);
     if (checkRunId) {
       try {
@@ -121,13 +121,11 @@ export async function runReview(
 
   // 6. Run multi-agent orchestration
   let findings: Awaited<ReturnType<typeof orchestrate>>["findings"];
-  let agentResults: Awaited<ReturnType<typeof orchestrate>>["agentResults"];
   try {
     const result = await orchestrate(context, {
       confidenceThreshold: options.confidenceThreshold,
     });
     findings = result.findings;
-    agentResults = result.agentResults;
   } catch (err) {
     // Mark check run as failed
     if (checkRunId) {
@@ -159,15 +157,10 @@ export async function runReview(
     diff
   );
 
-  const summary = formatSummaryComment(
-    findings,
-    overflowFindings,
-    agentResults,
-    totalDuration
-  );
+  // 8. Build review body and post
+  const reviewBody = buildReviewBody(findings, overflowFindings, totalDuration);
 
-  // 8. Post review
-  if (inlineComments.length > 0) {
+  if (findings.length > 0) {
     try {
       await postReview(
         octokit,
@@ -176,28 +169,44 @@ export async function runReview(
         pullNumber,
         pr.data.head.sha,
         inlineComments,
-        summary
+        reviewBody,
+        "REQUEST_CHANGES"
       );
       console.log(
-        `[review] Posted review with ${inlineComments.length} inline comments`
+        `[review] Posted review with ${inlineComments.length} inline comments (requested changes)`
       );
     } catch (err) {
-      console.error("[review] Failed to post review, falling back to comment:", err);
-      // Fallback: post as a regular comment
-      await postSummaryComment(octokit, owner, repo, pullNumber, summary);
+      console.error("[review] Failed to post review:", err);
     }
   } else {
-    // No inline comments — post summary only
-    await postSummaryComment(octokit, owner, repo, pullNumber, summary);
+    // No issues — approve the PR
+    try {
+      await postReview(
+        octokit,
+        owner,
+        repo,
+        pullNumber,
+        pr.data.head.sha,
+        [],
+        reviewBody,
+        "APPROVE"
+      );
+      console.log("[review] Approved PR (no issues found)");
+    } catch (err) {
+      console.error("[review] Failed to approve:", err);
+    }
   }
 
   // Update check run
   if (checkRunId) {
     try {
+      const checkSummary = findings.length > 0
+        ? `Found ${findings.length} issue${findings.length !== 1 ? "s" : ""} in ${formatDuration(totalDuration)}.`
+        : `No issues found in ${formatDuration(totalDuration)}.`;
       await updateCheckRun(
         octokit, owner, repo, checkRunId,
         findings.length > 0 ? "neutral" : "success",
-        summary,
+        checkSummary,
         findings.length
       );
     } catch (err) {

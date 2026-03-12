@@ -26,9 +26,11 @@ const CONFIDENCE_THRESHOLD = parseInt(
   10
 );
 
-const MODEL = process.env.MODEL ?? "claude-opus-4-6";
-const EFFORT = (process.env.EFFORT ?? "max") as "low" | "medium" | "high" | "max";
+const MODEL = process.env.MODEL ?? "claude-sonnet-4-6";
+const VERIFIER_MODEL = process.env.VERIFIER_MODEL || undefined;
+const EFFORT = (process.env.EFFORT ?? "high") as "low" | "medium" | "high" | "max";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || undefined;
+const ALLOW_MANUAL_REVIEW = process.env.ALLOW_MANUAL_REVIEW === "true";
 
 // ---------------------------------------------------------------------------
 // Startup validation
@@ -101,8 +103,9 @@ app.post("/webhook", (req, res) => {
     appConfig: { appId: APP_ID, privateKeyPath: PRIVATE_KEY_PATH },
     reviewOptions: {
       confidenceThreshold: CONFIDENCE_THRESHOLD,
-      modelConfig: { model: MODEL, effort: EFFORT, apiKey: ANTHROPIC_API_KEY },
+      modelConfig: { model: MODEL, effort: EFFORT, apiKey: ANTHROPIC_API_KEY, verifierModel: VERIFIER_MODEL },
     },
+    allowManualReview: ALLOW_MANUAL_REVIEW,
   };
 
   // Route events
@@ -120,7 +123,8 @@ app.post("/webhook", (req, res) => {
 app.listen(PORT, () => {
   console.log("");
   console.log("  AI Code Reviewer");
-  console.log(`  Model: ${MODEL} | Effort: ${EFFORT} | Confidence threshold: ${CONFIDENCE_THRESHOLD}`);
+  console.log(`  Model: ${MODEL} | Verifier: ${VERIFIER_MODEL ?? MODEL} | Effort: ${EFFORT} | Confidence threshold: ${CONFIDENCE_THRESHOLD}`);
+  console.log(`  Manual /review command: ${ALLOW_MANUAL_REVIEW ? "enabled" : "disabled"}`);
   console.log(`  Webhook:  POST http://localhost:${PORT}/webhook`);
   console.log(`  Health:   GET  http://localhost:${PORT}/`);
 

@@ -1,4 +1,4 @@
-export type Severity = "critical" | "warning" | "nit" | "pre-existing";
+export type Severity = "normal" | "nit" | "pre-existing";
 
 export type Category = "bug" | "security" | "style" | "performance";
 
@@ -10,6 +10,7 @@ export interface Finding {
   severity: Severity;
   category: Category;
   title: string;
+  summary: string;
   description: string;
   reasoning: string;
   suggestedFix?: string;
@@ -57,6 +58,7 @@ export interface ModelConfig {
   model: string;
   effort: "low" | "medium" | "high" | "max";
   apiKey?: string;
+  verifierModel?: string;
 }
 
 export interface PRContext {

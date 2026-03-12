@@ -88,7 +88,8 @@ Output a JSON array inside a \`\`\`json code fence. Each finding:
   "severity": "critical" | "warning" | "nit",
   "category": "bug",
   "title": "<one-line summary>",
-  "description": "### What the bug is\\n\\n<Explain clearly. Use inline \`backticks\` for code references. State what is wrong and why.>\\n\\n### Concrete proof: the snapshot\\n\\n<Show the exact input, call, or state that triggers the bug. Be specific — name the function, the argument, the value.>\\n\\n### Impact and fix\\n\\n**Impact:** <What breaks in production. Be specific — crash? wrong data? silent failure?>\\n**Fix:** <Describe the fix, then show corrected code if applicable.>",
+  "summary": "<2-3 sentence prose paragraph visible to the developer. First describe the problem clearly. Then state the fix. Use inline \`backticks\` for code references. Do NOT use markdown headings or bullet points — write natural prose.>",
+  "description": "### What the bug is\\n\\n<Explain clearly. Use inline \`backticks\` for code references. State what is wrong and why.>\\n\\n### Concrete proof: the snapshot\\n\\n<Show the exact input, call, or state that triggers the bug. Be specific — name the function, the argument, the value.>\\n\\n### Impact and fix\\n\\n**Impact:** <One sentence. State what breaks and the severity class. Include CWE ID where applicable, e.g. 'Data loss on concurrent writes. CWE-362 Race Condition.' or 'Crash on empty input. CWE-476 NULL Pointer Dereference.'>\\n**Fix:** <Describe the fix concisely, then show corrected code if applicable.>",
   "reasoning": "<your full chain-of-thought analysis — this goes in a collapsed section>",
   "suggestedFix": null
 }

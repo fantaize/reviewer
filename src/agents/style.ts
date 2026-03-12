@@ -58,7 +58,8 @@ Output a JSON array inside a \`\`\`json code fence. Each finding:
   "severity": "warning" | "nit",
   "category": "style",
   "title": "<one-line summary>",
-  "description": "### What the issue is\\n\\n<Explain the convention violation. Reference specific code with inline \`backticks\`. Cite the rule number if applicable.>\\n\\n### Impact and fix\\n\\n**Impact:** <Why this matters for the codebase.>\\n**Fix:** <Show the corrected code.>",
+  "summary": "<2-3 sentence prose paragraph visible to the developer. First describe the issue clearly. Then state the fix. Use inline \`backticks\` for code references. Do NOT use markdown headings or bullet points — write natural prose.>",
+  "description": "### What the issue is\\n\\n<Explain the convention violation. Reference specific code with inline \`backticks\`. Cite the rule number if applicable.>\\n\\n### Impact and fix\\n\\n**Impact:** <One sentence. State why this matters.>\\n**Fix:** <Show the corrected code concisely.>",
   "reasoning": "<your analysis>",
   "suggestedFix": null
 }

@@ -40,7 +40,7 @@ export async function runAgent(config: AgentConfig): Promise<Finding[]> {
       options: {
         systemPrompt: config.systemPrompt,
         model: config.model ?? "claude-opus-4-6",
-        maxTurns: config.maxTurns ?? (hasCodebase ? 20 : 10),
+        maxTurns: config.maxTurns ?? (hasCodebase ? 10 : 5),
         permissionMode: "dontAsk",
         allowedTools: hasCodebase ? ["Read", "Grep", "Glob"] : [],
         env: agentEnv,
@@ -282,6 +282,7 @@ function normalizeFindings(
       severity: validateSeverity(item.severity),
       category: validateCategory(item.category),
       title: item.title as string,
+      summary: (item.summary as string) ?? "",
       description: (item.description as string) ?? "",
       reasoning: (item.reasoning as string) ?? "",
       suggestedFix: item.suggestedFix as string | undefined,
@@ -292,11 +293,12 @@ function normalizeFindings(
 
 function validateSeverity(
   val: unknown
-): "critical" | "warning" | "nit" | "pre-existing" {
-  const valid = ["critical", "warning", "nit", "pre-existing"];
-  return valid.includes(val as string)
-    ? (val as "critical" | "warning" | "nit" | "pre-existing")
-    : "warning";
+): "normal" | "nit" | "pre-existing" {
+  // Map agent output to official severity levels
+  if (val === "nit") return "nit";
+  if (val === "pre-existing") return "pre-existing";
+  // critical, warning, and anything else → normal
+  return "normal";
 }
 
 function validateCategory(

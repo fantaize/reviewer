@@ -1,19 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { PullRequestPayload, IssueCommentPayload } from "../src/webhook.js";
 
-// We test the webhook handler logic by verifying:
-// 1. Event filtering (actions, draft PRs, missing installation)
-// 2. Lock mechanism (duplicate prevention)
-// 3. /review trigger parsing
-
-// Since handlers have side effects (GitHub API calls, review pipeline),
-// we test the filtering/routing logic by importing and calling with mocks.
-
 // Mock the dependencies before importing
 vi.mock("../src/github.js", () => ({
   createInstallationOctokit: vi.fn(() => ({})),
   postReaction: vi.fn(),
-  postSummaryComment: vi.fn(),
+  postPRReaction: vi.fn(),
   resolveOutdatedComments: vi.fn(() => 0),
 }));
 
@@ -31,6 +23,7 @@ const baseCtx = {
     confidenceThreshold: 80,
     modelConfig: { model: "claude-opus-4-6", effort: "max" as const },
   },
+  allowManualReview: true,
 };
 
 function prPayload(overrides: Partial<PullRequestPayload> = {}): PullRequestPayload {
@@ -88,7 +81,7 @@ describe("handlePullRequest", () => {
     expect(runReview).toHaveBeenCalled();
   });
 
-  it("calls resolveOutdatedComments on synchronize", async () => {
+  it("calls resolveOutdatedComments on synchronize with 0 findings", async () => {
     await handlePullRequest(
       prPayload({
         action: "synchronize",
@@ -112,10 +105,16 @@ describe("handleIssueComment", () => {
     };
   }
 
-  it("triggers review on /review command", async () => {
+  it("triggers review on /review command when enabled", async () => {
     await handleIssueComment(commentPayload("/review"), baseCtx);
     expect(postReaction).toHaveBeenCalled();
     expect(runReview).toHaveBeenCalled();
+  });
+
+  it("ignores /review command when disabled", async () => {
+    const disabledCtx = { ...baseCtx, allowManualReview: false };
+    await handleIssueComment(commentPayload("/review"), disabledCtx);
+    expect(runReview).not.toHaveBeenCalled();
   });
 
   it("ignores non-review comments", async () => {
