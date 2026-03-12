@@ -30,7 +30,7 @@ export function parseToken(header: string): string | null {
  * Only allows relative paths to prevent open redirect attacks.
  */
 export function safeRedirect(url: string): string {
-  if (url.startsWith("/") && !url.startsWith("//")) {
+  if (url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\")) {
     return url;
   }
   return "/";
