@@ -8,6 +8,7 @@ import { runBugFinder } from "./bug-finder.js";
 import { runSecurityAuditor } from "./security.js";
 import { runStyleChecker } from "./style.js";
 import { runVerifier } from "./verifier.js";
+import { generateReviewSummary, type ReviewSummary } from "./summarizer.js";
 
 export interface OrchestratorOptions {
   confidenceThreshold: number;
@@ -45,12 +46,13 @@ const SKIP_PATTERNS = [
 export async function orchestrate(
   context: PRContext,
   options: OrchestratorOptions
-): Promise<{ findings: VerifiedFinding[]; agentResults: AgentResult[] }> {
+): Promise<{ findings: VerifiedFinding[]; agentResults: AgentResult[]; summary: ReviewSummary }> {
   // Filter files
   const filteredContext = filterContext(context);
 
   if (filteredContext.changedFiles.length === 0) {
-    return { findings: [], agentResults: [] };
+    const summary = await generateReviewSummary(context, []);
+    return { findings: [], agentResults: [], summary };
   }
 
   // Determine which agents to run
@@ -94,7 +96,8 @@ export async function orchestrate(
 
   if (allFindings.length === 0) {
     console.log("[orchestrator] No findings from any agent");
-    return { findings: [], agentResults };
+    const summary = await generateReviewSummary(context, []);
+    return { findings: [], agentResults, summary };
   }
 
   // Phase 2: Deduplicate
@@ -118,7 +121,11 @@ export async function orchestrate(
   // Phase 5: Rank
   const ranked = rankFindings(filtered);
 
-  return { findings: ranked, agentResults };
+  // Phase 6: Generate PR-level summary
+  console.log("[orchestrator] Generating review summary...");
+  const summary = await generateReviewSummary(context, ranked);
+
+  return { findings: ranked, agentResults, summary };
 }
 
 function filterContext(context: PRContext): PRContext {

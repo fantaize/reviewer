@@ -121,11 +121,13 @@ export async function runReview(
 
   // 6. Run multi-agent orchestration
   let findings: Awaited<ReturnType<typeof orchestrate>>["findings"];
+  let summary: Awaited<ReturnType<typeof orchestrate>>["summary"];
   try {
     const result = await orchestrate(context, {
       confidenceThreshold: options.confidenceThreshold,
     });
     findings = result.findings;
+    summary = result.summary;
   } catch (err) {
     // Mark check run as failed
     if (checkRunId) {
@@ -158,7 +160,7 @@ export async function runReview(
   );
 
   // 8. Build review body and post
-  const reviewBody = buildReviewBody(findings, overflowFindings, totalDuration);
+  const reviewBody = buildReviewBody(findings, overflowFindings, totalDuration, summary);
 
   if (findings.length > 0) {
     try {

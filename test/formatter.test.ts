@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { buildReviewComments, buildReviewBody } from "../src/formatter.js";
 import type { VerifiedFinding } from "../src/agents/types.js";
+import type { ReviewSummary } from "../src/agents/summarizer.js";
+
+const SAMPLE_SUMMARY: ReviewSummary = {
+  overview: "This PR adds a new API endpoint for user management.",
+  securityRisks: "None. No user input handling modified.",
+  levelOfScrutiny: "Low scrutiny is appropriate for these changes.",
+  otherFactors: "No additional observations.",
+};
 
 function makeFinding(overrides: Partial<VerifiedFinding> = {}): VerifiedFinding {
   return {
@@ -78,23 +86,29 @@ describe("buildReviewComments", () => {
 });
 
 describe("buildReviewBody", () => {
-  it("shows LGTM message with extended reasoning when no findings", () => {
-    const body = buildReviewBody([], [], 10000);
+  it("shows LGTM message with structured sections when no findings", () => {
+    const body = buildReviewBody([], [], 10000, SAMPLE_SUMMARY);
     expect(body).toContain("LGTM");
     expect(body).toContain("look good");
     expect(body).toContain("<details>");
     expect(body).toContain("Extended reasoning");
+    expect(body).toContain("### Overview");
+    expect(body).toContain("### Security risks");
+    expect(body).toContain("### Level of scrutiny");
+    expect(body).toContain("### Other factors");
+    expect(body).toContain("new API endpoint");
   });
 
-  it("lists findings inside extended reasoning with emojis", () => {
+  it("lists findings with structured sections inside extended reasoning", () => {
     const findings = [
       makeFinding({ severity: "normal" }),
       makeFinding({ id: "t2", severity: "nit", file: "src/other.ts", startLine: 5, title: "Nit issue", summary: "Minor style issue." }),
     ];
-    const body = buildReviewBody(findings, [], 10000);
+    const body = buildReviewBody(findings, [], 10000, SAMPLE_SUMMARY);
     expect(body).toContain("2 issues");
     expect(body).toContain("<details>");
-    expect(body).toContain("Extended reasoning");
+    expect(body).toContain("### Overview");
+    expect(body).toContain("### Findings");
     expect(body).toContain("src/app.ts:13");
     expect(body).toContain("src/other.ts:5");
     expect(body).toContain("🔴");
@@ -103,14 +117,21 @@ describe("buildReviewBody", () => {
 
   it("notes overflow findings", () => {
     const overflow = [makeFinding({ file: "src/other.ts", title: "Overflow bug" })];
-    const body = buildReviewBody([...overflow], overflow, 10000);
+    const body = buildReviewBody([...overflow], overflow, 10000, SAMPLE_SUMMARY);
     expect(body).toContain("outside the changed lines");
   });
 
   it("does not expose internal agent names", () => {
     const findings = [makeFinding()];
-    const body = buildReviewBody(findings, [], 10000);
+    const body = buildReviewBody(findings, [], 10000, SAMPLE_SUMMARY);
     expect(body).not.toContain("bug-finder");
     expect(body).not.toContain("security-auditor");
+  });
+
+  it("works without summary (fallback)", () => {
+    const body = buildReviewBody([], [], 10000);
+    expect(body).toContain("LGTM");
+    expect(body).toContain("<details>");
+    expect(body).not.toContain("### Overview");
   });
 });

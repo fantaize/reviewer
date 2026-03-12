@@ -1,4 +1,5 @@
 import type { VerifiedFinding, Severity } from "./agents/types.js";
+import type { ReviewSummary } from "./agents/summarizer.js";
 import type { ReviewComment } from "./github.js";
 import { buildDiffMap, isLineInDiff, findClosestDiffLine } from "./diff.js";
 
@@ -105,39 +106,56 @@ export function buildReviewComments(
 export function buildReviewBody(
   findings: VerifiedFinding[],
   overflowFindings: VerifiedFinding[],
-  totalDuration: number
+  totalDuration: number,
+  summary?: ReviewSummary
 ): string {
-  if (findings.length === 0) {
-    const lines: string[] = [];
-    lines.push(`LGTM \u2014 no issues found in ${formatDuration(totalDuration)}, the changes look good.`);
-    lines.push("");
-    lines.push("<details>");
-    lines.push(`<summary>Extended reasoning\u2026</summary>`);
-    lines.push("");
-    lines.push(`Reviewed ${findings.length} findings across the changed files. No issues met the confidence threshold.`);
-    lines.push("");
-    lines.push("</details>");
-    return lines.join("\n");
-  }
-
   const lines: string[] = [];
 
-  lines.push(`Found **${findings.length} issue${findings.length !== 1 ? "s" : ""}** in ${formatDuration(totalDuration)}.`);
+  if (findings.length === 0) {
+    lines.push(`LGTM \u2014 no issues found in ${formatDuration(totalDuration)}, the changes look good.`);
+  } else {
+    lines.push(`Found **${findings.length} issue${findings.length !== 1 ? "s" : ""}** in ${formatDuration(totalDuration)}.`);
+  }
+
   lines.push("");
   lines.push("<details>");
   lines.push(`<summary>Extended reasoning\u2026</summary>`);
   lines.push("");
 
-  for (let i = 0; i < findings.length; i++) {
-    const f = findings[i];
-    const emoji = SEVERITY_EMOJI[f.severity];
-    const label = SEVERITY_LABEL[f.severity];
-    lines.push(`${i + 1}. ${emoji} **${f.file}:${f.startLine}** \u2014 ${f.summary || f.title} *(${label})*`);
+  // Structured sections (matches official Claude Code Review format)
+  if (summary) {
+    lines.push("### Overview");
+    lines.push("");
+    lines.push(summary.overview);
+    lines.push("");
+    lines.push("### Security risks");
+    lines.push("");
+    lines.push(summary.securityRisks);
+    lines.push("");
+    lines.push("### Level of scrutiny");
+    lines.push("");
+    lines.push(summary.levelOfScrutiny);
+    lines.push("");
+    lines.push("### Other factors");
+    lines.push("");
+    lines.push(summary.otherFactors);
   }
 
-  if (overflowFindings.length > 0) {
+  if (findings.length > 0) {
     lines.push("");
-    lines.push("*Issues outside the changed lines are listed above but could not be attached as inline comments.*");
+    lines.push("### Findings");
+    lines.push("");
+    for (let i = 0; i < findings.length; i++) {
+      const f = findings[i];
+      const emoji = SEVERITY_EMOJI[f.severity];
+      const label = SEVERITY_LABEL[f.severity];
+      lines.push(`${i + 1}. ${emoji} **${f.file}:${f.startLine}** \u2014 ${f.summary || f.title} *(${label})*`);
+    }
+
+    if (overflowFindings.length > 0) {
+      lines.push("");
+      lines.push("*Issues outside the changed lines are listed above but could not be attached as inline comments.*");
+    }
   }
 
   lines.push("");
